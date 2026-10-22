@@ -1,9 +1,10 @@
 // Coder Browser - Step 4: Workspaces & Multi-Context Tabs
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, session } = require('electron');
 const path = require('path');
 const TabManager = require('./src/main/tabManager');
 const SplitManager = require('./src/main/splitManager');
 const WorkspaceManager = require('./src/main/workspaceManager');
+const privacyManager = require('./src/main/privacyManager');
 const setupIpcHandlers = require('./src/main/ipcHandlers');
 
 let mainWindow = null;
@@ -106,7 +107,7 @@ function createWindow() {
   };
 
   // Register all IPC handlers
-  setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager);
+  setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager, privacyManager);
 
   mainWindow.loadFile('index.html');
 
@@ -124,7 +125,8 @@ function createWindow() {
 }
 
 // App lifecycle
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await privacyManager.init(session.defaultSession);
   createWindow();
 
   app.on('activate', () => {

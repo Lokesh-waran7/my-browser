@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('browserAPI', {
   goForward: (tabId) => ipcRenderer.invoke('tab:goForward', tabId),
   reload: (tabId) => ipcRenderer.invoke('tab:reload', tabId),
   stop: (tabId) => ipcRenderer.invoke('tab:stop', tabId),
+  openDevTools: (tabId) => ipcRenderer.invoke('tab:openDevTools', tabId),
 
   // Split View
   toggleSplitView: () => ipcRenderer.invoke('split:toggle'),
@@ -21,6 +22,7 @@ contextBridge.exposeInMainWorld('browserAPI', {
   setFocusedPane: (tabId) => ipcRenderer.invoke('split:setFocused', tabId),
   getSplitState: () => ipcRenderer.invoke('split:getState'),
   updateLayoutBounds: (bounds) => ipcRenderer.invoke('layout:updateBounds', bounds),
+  setOverlayOpen: (isOpen) => ipcRenderer.invoke('views:setOverlayOpen', isOpen),
 
   // Workspaces
   getWorkspaceState: () => ipcRenderer.invoke('workspace:getState'),
@@ -29,6 +31,13 @@ contextBridge.exposeInMainWorld('browserAPI', {
   updateWorkspace: (options) => ipcRenderer.invoke('workspace:update', options),
   deleteWorkspace: (options) => ipcRenderer.invoke('workspace:delete', options),
   moveTabToWorkspace: (options) => ipcRenderer.invoke('workspace:moveTab', options),
+
+  // Privacy
+  getPrivacyStats: () => ipcRenderer.invoke('privacy:getStats'),
+  toggleAdBlocker: (enabled) => ipcRenderer.invoke('privacy:toggleAdBlocker', enabled),
+  addAllowlist: (domain) => ipcRenderer.invoke('privacy:addAllowlist', domain),
+  removeAllowlist: (domain) => ipcRenderer.invoke('privacy:removeAllowlist', domain),
+  isDomainAllowed: (domain) => ipcRenderer.invoke('privacy:isDomainAllowed', domain),
 
   // Event Subscriptions
   onTabCreated: (callback) => {

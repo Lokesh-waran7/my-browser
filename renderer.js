@@ -479,6 +479,26 @@ function renderTabPicker() {
   }
 }
 
+// Reusable Overlay Helpers: Hide/Restore WebContentsViews for all current & future modals/menus
+function updateOverlayVisibility() {
+  const hasOpenOverlay = !!document.querySelector(
+    '.modal-backdrop:not(.hidden), .context-menu:not(.hidden), .popup:not(.hidden), .dropdown-menu:not(.hidden)'
+  );
+  window.browserAPI.setOverlayOpen(hasOpenOverlay);
+}
+
+function showOverlay(element) {
+  if (!element) return;
+  element.classList.remove('hidden');
+  updateOverlayVisibility();
+}
+
+function hideOverlay(element) {
+  if (!element) return;
+  element.classList.add('hidden');
+  updateOverlayVisibility();
+}
+
 // Workspace Modal Initialization
 function initColorPalette() {
   wsColorPalette.innerHTML = '';
@@ -507,14 +527,19 @@ function openWorkspaceModal(wsToEdit = null) {
   selectedColor = wsToEdit ? wsToEdit.color : '#3b82f6';
   initColorPalette();
 
-  workspaceModal.classList.remove('hidden');
+  showOverlay(workspaceModal);
   wsNameInput.focus();
 }
 
 function closeWorkspaceModal() {
-  workspaceModal.classList.add('hidden');
+  hideOverlay(workspaceModal);
   editingWorkspaceId = null;
 }
+
+// Dismiss modal when clicking backdrop outside card
+workspaceModal.addEventListener('click', (e) => {
+  if (e.target === workspaceModal) closeWorkspaceModal();
+});
 
 // Emoji presets in modal
 document.querySelectorAll('.emoji-btn').forEach((btn) => {
@@ -567,13 +592,17 @@ function openDeleteWorkspaceModal(wsId) {
       deleteWsTargetSelect.appendChild(opt);
     });
 
-  deleteWorkspaceModal.classList.remove('hidden');
+  showOverlay(deleteWorkspaceModal);
 }
 
 function closeDeleteWorkspaceModal() {
-  deleteWorkspaceModal.classList.add('hidden');
+  hideOverlay(deleteWorkspaceModal);
   targetContextWorkspaceId = null;
 }
+
+deleteWorkspaceModal.addEventListener('click', (e) => {
+  if (e.target === deleteWorkspaceModal) closeDeleteWorkspaceModal();
+});
 
 btnDeleteWsCancel.addEventListener('click', closeDeleteWorkspaceModal);
 
@@ -593,8 +622,8 @@ btnDeleteWsConfirm.addEventListener('click', async () => {
 
 // Context Menus
 function hideContextMenus() {
-  workspaceContextMenu.classList.add('hidden');
-  tabContextMenu.classList.add('hidden');
+  hideOverlay(workspaceContextMenu);
+  hideOverlay(tabContextMenu);
 }
 
 document.addEventListener('click', hideContextMenus);
@@ -614,7 +643,7 @@ function showWorkspaceContextMenu(wsId, x, y) {
 
   workspaceContextMenu.style.left = `${Math.min(x, window.innerWidth - 180)}px`;
   workspaceContextMenu.style.top = `${Math.min(y, window.innerHeight - 100)}px`;
-  workspaceContextMenu.classList.remove('hidden');
+  showOverlay(workspaceContextMenu);
 }
 
 ctxWsEdit.addEventListener('click', (e) => {
@@ -663,7 +692,7 @@ function showTabContextMenu(tabId, x, y) {
 
   tabContextMenu.style.left = `${Math.min(x, window.innerWidth - 200)}px`;
   tabContextMenu.style.top = `${Math.min(y, window.innerHeight - 150)}px`;
-  tabContextMenu.classList.remove('hidden');
+  showOverlay(tabContextMenu);
 }
 
 tabCtxClose.addEventListener('click', (e) => {
@@ -845,6 +874,20 @@ window.addEventListener('keydown', (e) => {
     const targetTab = getTargetTab();
     if (targetTab) {
       window.browserAPI.closeTab(targetTab.id);
+    }
+  }
+  // Escape: Close any open modal or context menu
+  else if (e.key === 'Escape') {
+    closeWorkspaceModal();
+    closeDeleteWorkspaceModal();
+    hideContextMenus();
+  }
+  // Ctrl+Shift+I or F12: Open DevTools for active tab's WebContentsView
+  else if ((isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'i') || e.key === 'F12') {
+    e.preventDefault();
+    const targetTab = getTargetTab();
+    if (targetTab) {
+      window.browserAPI.openDevTools(targetTab.id);
     }
   }
 });

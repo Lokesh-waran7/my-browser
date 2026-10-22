@@ -15,5 +15,8 @@
   "type": "commonjs",
   "devDependencies": {
     "electron": "^45.0.0"
+  },
+  "dependencies": {
+    "@ghostery/adblocker-electron": "^2.20.1"
   }
 }

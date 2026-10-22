@@ -1,5 +1,7 @@
 // Tab Manager - Manages WebContentsView instances, lifecycle, and security
 const { WebContentsView } = require('electron');
+const privacyManager = require('./privacyManager');
+const youtubeAdHandler = require('./youtubeAdHandler');
 
 class TabManager {
   constructor(mainWindow) {
@@ -65,14 +67,36 @@ class TabManager {
     });
 
     // Navigation and URL updates
+    const triggerYouTubeHandler = (url) => {
+      youtubeAdHandler.handleNavigation(wc, url, privacyManager);
+    };
+
     const handleNav = (event, url) => {
       tab.url = url;
+      const currentTitle = wc.getTitle();
+      if (currentTitle) {
+        tab.title = currentTitle;
+      }
       tab.canGoBack = wc.canGoBack();
       tab.canGoForward = wc.canGoForward();
       if (this.onTabUpdated) this.onTabUpdated(tab);
+      triggerYouTubeHandler(url);
     };
     wc.on('did-navigate', handleNav);
-    wc.on('did-navigate-in-page', handleNav);
+    wc.on('did-navigate-in-page', (event, url) => {
+      handleNav(event, url);
+    });
+    wc.on('did-finish-load', () => {
+      triggerYouTubeHandler(wc.getURL());
+    });
+    wc.on('dom-ready', () => {
+      triggerYouTubeHandler(wc.getURL());
+    });
+
+    // Main process error logging
+    wc.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+      console.log(`[did-fail-load] Tab: ${tabId}, Code: ${errorCode}, Description: ${errorDescription}, URL: ${validatedURL}, MainFrame: ${isMainFrame}`);
+    });
 
     // Page title
     wc.on('page-title-updated', (event, title) => {
@@ -105,6 +129,7 @@ class TabManager {
 
     // Edge case: handle web page render crashes gracefully
     wc.on('render-process-gone', (event, details) => {
+      console.log(`[render-process-gone] Tab: ${tabId}, Reason: ${details ? details.reason : 'unknown'}, ExitCode: ${details ? details.exitCode : 'unknown'}`);
       tab.isCrashed = true;
       tab.title = 'Page Crashed';
       if (this.onTabCrash) this.onTabCrash(tab, details);
@@ -204,6 +229,16 @@ class TabManager {
     const tab = this.tabs.get(tabId);
     if (tab) {
       tab.view.webContents.stop();
+    }
+  }
+
+  /**
+   * Opens DevTools in detached mode for active or specified tab's WebContentsView.
+   */
+  openDevTools(tabId) {
+    const tab = this.tabs.get(tabId) || this.tabs.get(this.activeTabId);
+    if (tab && tab.view && tab.view.webContents) {
+      tab.view.webContents.openDevTools({ mode: 'detach' });
     }
   }
 }

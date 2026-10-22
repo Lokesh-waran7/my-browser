@@ -10,6 +10,7 @@ class SplitManager {
     this.rightTabId = null;
     this.focusedTabId = null;
     this.splitRatio = 0.5;
+    this.isOverlayOpen = false; // When true, hides WebContentsViews so HTML modals/menus are not covered
 
     // DOM-measured bounding coordinates (sent from UI renderer)
     this.layoutBounds = {
@@ -135,6 +136,14 @@ class SplitManager {
   }
 
   /**
+   * Temporarily hides or restores WebContentsViews when an HTML overlay (modal, menu) is open.
+   */
+  setOverlayOpen(isOpen) {
+    this.isOverlayOpen = !!isOpen;
+    this.applyLayout();
+  }
+
+  /**
    * Repositions and attaches/detaches WebContentsViews according to the current layout.
    */
   applyLayout() {
@@ -142,6 +151,17 @@ class SplitManager {
     if (!contentView) return;
 
     const allTabs = Array.from(this.tabManager.tabs.values());
+
+    // If an HTML overlay/modal is open, hide all WebContentsViews so the modal is fully visible
+    if (this.isOverlayOpen) {
+      allTabs.forEach((tab) => {
+        tab.view.setVisible(false);
+        try {
+          contentView.removeChildView(tab.view);
+        } catch (e) {}
+      });
+      return;
+    }
 
     if (!this.isSplit) {
       // 1. Single Tab View Mode

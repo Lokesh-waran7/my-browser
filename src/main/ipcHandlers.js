@@ -1,7 +1,7 @@
 // IPC Handlers - Bridges UI renderer commands with main process managers
 const { ipcMain } = require('electron');
 
-function setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager) {
+function setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager, privacyManager) {
   // Tab Management
   ipcMain.handle('tab:create', (event, url, activate) => {
     const tab = tabManager.createTab(url, activate !== false);
@@ -84,6 +84,12 @@ function setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager
     return true;
   });
 
+  ipcMain.handle('tab:openDevTools', (event, tabId) => {
+    const targetId = tabId || tabManager.activeTabId || splitManager.focusedTabId;
+    tabManager.openDevTools(targetId);
+    return true;
+  });
+
   // Split View Controls
   ipcMain.handle('split:toggle', () => {
     if (splitManager.isSplit) {
@@ -130,6 +136,12 @@ function setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager
     return true;
   });
 
+  // Overlay / Modal visibility control
+  ipcMain.handle('views:setOverlayOpen', (event, isOpen) => {
+    splitManager.setOverlayOpen(isOpen);
+    return true;
+  });
+
   // Workspace Controls
   ipcMain.handle('workspace:getState', () => {
     return workspaceManager ? workspaceManager.getState() : null;
@@ -160,6 +172,30 @@ function setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager
     return workspaceManager
       ? workspaceManager.moveTabToWorkspace(tabId, targetWorkspaceId)
       : false;
+  });
+
+  // Privacy & Blocker Controls
+  ipcMain.handle('privacy:getStats', () => {
+    return privacyManager ? privacyManager.getStats() : null;
+  });
+
+  ipcMain.handle('privacy:toggleAdBlocker', (event, enabled) => {
+    if (privacyManager) privacyManager.setAdBlockerEnabled(enabled);
+    return privacyManager ? privacyManager.adBlockerEnabled : false;
+  });
+
+  ipcMain.handle('privacy:addAllowlist', (event, domain) => {
+    if (privacyManager) privacyManager.addAllowlist(domain);
+    return true;
+  });
+
+  ipcMain.handle('privacy:removeAllowlist', (event, domain) => {
+    if (privacyManager) privacyManager.removeAllowlist(domain);
+    return true;
+  });
+
+  ipcMain.handle('privacy:isDomainAllowed', (event, domain) => {
+    return privacyManager ? privacyManager.isDomainAllowed(domain) : false;
   });
 }
 
