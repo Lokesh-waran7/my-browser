@@ -1,11 +1,15 @@
-// Coder Browser - Step 3: Renderer Logic (IPC Bridge, Split View & Vertical Tabs)
+// Coder Browser - Step 4: Workspaces, Split View & Tabs Management
 
-// DOM Elements
+// DOM Elements: Sidebar & Workspaces
 const sidebar = document.getElementById('sidebar');
 const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+const currentWorkspaceName = document.getElementById('current-workspace-name');
+const workspaceList = document.getElementById('workspace-list');
+const btnNewWorkspace = document.getElementById('btn-new-workspace');
 const btnNewTab = document.getElementById('btn-new-tab');
 const tabList = document.getElementById('tab-list');
 
+// Toolbar Elements
 const btnBack = document.getElementById('btn-back');
 const btnForward = document.getElementById('btn-forward');
 const btnReload = document.getElementById('btn-reload');
@@ -13,6 +17,7 @@ const urlForm = document.getElementById('url-form');
 const urlInput = document.getElementById('url-input');
 const securityIcon = document.getElementById('security-icon');
 
+// Split View Elements
 const btnSplitToggle = document.getElementById('btn-split-toggle');
 const btnSwapPanes = document.getElementById('btn-swap-panes');
 const btnCloseSplit = document.getElementById('btn-close-split');
@@ -41,7 +46,32 @@ const btnPickerCancel = document.getElementById('btn-picker-cancel');
 const crashBanner = document.getElementById('crash-banner');
 const btnReloadCrash = document.getElementById('btn-reload-crash');
 
+// Workspace Modals & Context Menus
+const workspaceModal = document.getElementById('workspace-modal');
+const wsModalTitle = document.getElementById('ws-modal-title');
+const wsNameInput = document.getElementById('ws-name-input');
+const wsIconInput = document.getElementById('ws-icon-input');
+const wsColorPalette = document.getElementById('ws-color-palette');
+const btnWsCancel = document.getElementById('btn-ws-cancel');
+const btnWsSave = document.getElementById('btn-ws-save');
+
+const deleteWorkspaceModal = document.getElementById('delete-workspace-modal');
+const deleteWsMessage = document.getElementById('delete-ws-message');
+const deleteWsTargetSelect = document.getElementById('delete-ws-target-select');
+const btnDeleteWsCancel = document.getElementById('btn-delete-ws-cancel');
+const btnDeleteWsConfirm = document.getElementById('btn-delete-ws-confirm');
+
+const workspaceContextMenu = document.getElementById('workspace-context-menu');
+const ctxWsEdit = document.getElementById('ctx-ws-edit');
+const ctxWsDelete = document.getElementById('ctx-ws-delete');
+
+const tabContextMenu = document.getElementById('tab-context-menu');
+const tabCtxWsList = document.getElementById('tab-ctx-ws-list');
+const tabCtxClose = document.getElementById('tab-ctx-close');
+
 // Application State
+let workspaces = [];
+let activeWorkspaceId = null;
 let tabs = [];
 let activeTabId = null;
 let splitState = {
@@ -53,6 +83,33 @@ let splitState = {
   splitRatio: 0.5,
 };
 let crashedTabId = null;
+
+// Modal & Context State
+let editingWorkspaceId = null;
+let targetContextWorkspaceId = null;
+let targetContextTabId = null;
+let selectedColor = '#3b82f6';
+
+const COLOR_PRESETS = [
+  '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b',
+  '#f43f5e', '#06b6d4', '#ec4899', '#84cc16'
+];
+
+/**
+ * Returns active workspace data object.
+ */
+function getActiveWorkspace() {
+  return workspaces.find((w) => w.id === activeWorkspaceId) || workspaces[0];
+}
+
+/**
+ * Returns tabs that belong to the active workspace.
+ */
+function getActiveWorkspaceTabs() {
+  const activeWs = getActiveWorkspace();
+  if (!activeWs) return [];
+  return tabs.filter((t) => t.workspaceId === activeWs.id || (activeWs.tabIds && activeWs.tabIds.includes(t.id)));
+}
 
 /**
  * Normalizes input text into a valid URL or search engine query.
@@ -78,7 +135,7 @@ function normalizeUrl(input) {
  */
 function getTargetTab() {
   const targetId = splitState.isSplit ? splitState.focusedTabId : activeTabId;
-  return tabs.find((t) => t.id === targetId) || tabs[0];
+  return tabs.find((t) => t.id === targetId) || getActiveWorkspaceTabs()[0] || tabs[0];
 }
 
 /**
@@ -156,10 +213,11 @@ function updateToolbar() {
     `;
   }
 
-  // Edge case: Disable split view button if only one tab is open
-  if (tabs.length <= 1 && !splitState.isSplit) {
+  // Split view button state
+  const wsTabs = getActiveWorkspaceTabs();
+  if (wsTabs.length <= 1 && !splitState.isSplit) {
     btnSplitToggle.disabled = true;
-    btnSplitToggle.title = 'Open at least 2 tabs to enable Split View';
+    btnSplitToggle.title = 'Open at least 2 tabs in this workspace to enable Split View';
   } else {
     btnSplitToggle.disabled = false;
     btnSplitToggle.title = splitState.isSplit
@@ -177,18 +235,98 @@ function updateToolbar() {
 }
 
 /**
- * Renders the vertical tab list in the sidebar.
+ * Renders workspace switcher icons at the top of the sidebar.
+ */
+function renderWorkspaceSwitcher() {
+  workspaceList.innerHTML = '';
+
+  workspaces.forEach((ws, index) => {
+    const item = document.createElement('div');
+    item.className = 'workspace-item';
+    item.id = `ws-btn-${ws.id}`;
+    item.style.setProperty('--ws-color', ws.color || '#3b82f6');
+    item.title = `${ws.name} (Ctrl+${index + 1})`;
+    item.textContent = ws.icon || '💼';
+
+    if (ws.id === activeWorkspaceId) {
+      item.classList.add('active');
+    }
+
+    // Color indicator dot
+    const dot = document.createElement('div');
+    dot.className = 'workspace-dot';
+    item.appendChild(dot);
+
+    // Switch workspace on click
+    item.addEventListener('click', () => {
+      window.browserAPI.switchWorkspace(ws.id);
+    });
+
+    // Right-click context menu
+    item.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showWorkspaceContextMenu(ws.id, e.clientX, e.clientY);
+    });
+
+    // Drag-and-drop: Tab drop target
+    item.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      item.classList.add('drag-over');
+    });
+
+    item.addEventListener('dragleave', () => {
+      item.classList.remove('drag-over');
+    });
+
+    item.addEventListener('drop', (e) => {
+      e.preventDefault();
+      item.classList.remove('drag-over');
+      const tabId = e.dataTransfer.getData('text/plain');
+      if (tabId) {
+        window.browserAPI.moveTabToWorkspace({ tabId, targetWorkspaceId: ws.id });
+      }
+    });
+
+    workspaceList.appendChild(item);
+  });
+
+  const activeWs = getActiveWorkspace();
+  if (activeWs) {
+    currentWorkspaceName.textContent = activeWs.name || 'Tabs';
+  }
+}
+
+/**
+ * Renders vertical tabs belonging strictly to the active workspace.
  */
 function renderSidebarTabs() {
   tabList.innerHTML = '';
   const currentFocusedId = splitState.isSplit ? splitState.focusedTabId : activeTabId;
+  const currentTabs = getActiveWorkspaceTabs();
 
-  tabs.forEach((tab) => {
+  currentTabs.forEach((tab) => {
     const tabEl = document.createElement('div');
     tabEl.className = 'tab-item';
+    tabEl.draggable = true;
     if (tab.id === currentFocusedId) {
       tabEl.classList.add('active');
     }
+
+    // Drag start / end
+    tabEl.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', tab.id);
+      tabEl.classList.add('dragging');
+    });
+
+    tabEl.addEventListener('dragend', () => {
+      tabEl.classList.remove('dragging');
+    });
+
+    // Right-click context menu for tab
+    tabEl.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showTabContextMenu(tab.id, e.clientX, e.clientY);
+    });
 
     // Favicon
     const faviconSpan = document.createElement('span');
@@ -208,7 +346,7 @@ function renderSidebarTabs() {
     tabEl.appendChild(faviconSpan);
     tabEl.appendChild(titleSpan);
 
-    // In split view, display split indicator badge
+    // Split indicator badge
     if (splitState.isSplit) {
       if (tab.id === splitState.leftTabId) {
         const badge = document.createElement('span');
@@ -237,7 +375,7 @@ function renderSidebarTabs() {
 
     tabEl.appendChild(closeBtn);
 
-    // Switch tab on click
+    // Click to switch
     tabEl.addEventListener('click', () => {
       window.browserAPI.switchTab(tab.id);
     });
@@ -256,16 +394,13 @@ function renderSplitLayout() {
     viewMountSingle.classList.add('hidden');
     splitContainer.classList.remove('hidden');
 
-    // Apply split ratio (min 250px)
     const ratio = splitState.splitRatio || 0.5;
     paneLeft.style.width = `calc(${ratio * 100}% - 4px)`;
     paneRight.style.width = `calc(${(1 - ratio) * 100}% - 4px)`;
 
-    // Focus highlight borders
     paneLeft.classList.toggle('focused', splitState.focusedTabId === splitState.leftTabId);
     paneRight.classList.toggle('focused', splitState.focusedTabId === splitState.rightTabId);
 
-    // Populate Left Pane Header
     const leftTab = tabs.find((t) => t.id === splitState.leftTabId);
     if (leftTab) {
       titleLeft.textContent = leftTab.title || 'Left Pane';
@@ -275,7 +410,6 @@ function renderSplitLayout() {
         : '🌐';
     }
 
-    // Populate Right Pane Header & Picker
     const rightTab = tabs.find((t) => t.id === splitState.rightTabId);
     if (splitState.isPickingRight) {
       titleRight.textContent = 'Select Tab...';
@@ -304,18 +438,19 @@ function renderSplitLayout() {
 }
 
 /**
- * Renders list of candidate tabs in right pane picker.
+ * Renders tab candidates for the right pane in split mode.
  */
 function renderTabPicker() {
   pickerTabList.innerHTML = '';
-  const candidateTabs = tabs.filter((t) => t.id !== splitState.leftTabId);
+  const currentWsTabs = getActiveWorkspaceTabs();
+  const candidateTabs = currentWsTabs.filter((t) => t.id !== splitState.leftTabId);
 
   if (candidateTabs.length === 0) {
     const emptyMsg = document.createElement('div');
     emptyMsg.style.fontSize = '12px';
     emptyMsg.style.color = '#71717a';
     emptyMsg.style.padding = '8px 0';
-    emptyMsg.textContent = 'No other tabs open. Click "+ Open New Tab" below:';
+    emptyMsg.textContent = 'No other tabs open in this workspace. Click "+ Open New Tab" below:';
     pickerTabList.appendChild(emptyMsg);
   } else {
     candidateTabs.forEach((tab) => {
@@ -343,6 +478,201 @@ function renderTabPicker() {
     });
   }
 }
+
+// Workspace Modal Initialization
+function initColorPalette() {
+  wsColorPalette.innerHTML = '';
+  COLOR_PRESETS.forEach((color) => {
+    const swatch = document.createElement('div');
+    swatch.className = 'color-swatch';
+    swatch.style.backgroundColor = color;
+    if (color === selectedColor) swatch.classList.add('active');
+
+    swatch.addEventListener('click', () => {
+      selectedColor = color;
+      document.querySelectorAll('.color-swatch').forEach((s) => s.classList.remove('active'));
+      swatch.classList.add('active');
+    });
+
+    wsColorPalette.appendChild(swatch);
+  });
+}
+
+function openWorkspaceModal(wsToEdit = null) {
+  hideContextMenus();
+  editingWorkspaceId = wsToEdit ? wsToEdit.id : null;
+  wsModalTitle.textContent = wsToEdit ? 'Edit Workspace' : 'New Workspace';
+  wsNameInput.value = wsToEdit ? wsToEdit.name : '';
+  wsIconInput.value = wsToEdit ? wsToEdit.icon : '💼';
+  selectedColor = wsToEdit ? wsToEdit.color : '#3b82f6';
+  initColorPalette();
+
+  workspaceModal.classList.remove('hidden');
+  wsNameInput.focus();
+}
+
+function closeWorkspaceModal() {
+  workspaceModal.classList.add('hidden');
+  editingWorkspaceId = null;
+}
+
+// Emoji presets in modal
+document.querySelectorAll('.emoji-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    wsIconInput.value = btn.textContent;
+  });
+});
+
+btnWsCancel.addEventListener('click', closeWorkspaceModal);
+
+btnWsSave.addEventListener('click', async () => {
+  const name = wsNameInput.value.trim() || 'Workspace';
+  const icon = wsIconInput.value.trim() || '💼';
+  const color = selectedColor;
+
+  if (editingWorkspaceId) {
+    await window.browserAPI.updateWorkspace({ workspaceId: editingWorkspaceId, name, color, icon });
+  } else {
+    await window.browserAPI.createWorkspace({ name, color, icon });
+  }
+  closeWorkspaceModal();
+});
+
+btnNewWorkspace.addEventListener('click', () => {
+  openWorkspaceModal(null);
+});
+
+// Delete Workspace Modal
+function openDeleteWorkspaceModal(wsId) {
+  hideContextMenus();
+  if (workspaces.length <= 1) {
+    alert('Cannot delete the last remaining workspace.');
+    return;
+  }
+
+  const targetWs = workspaces.find((w) => w.id === wsId);
+  if (!targetWs) return;
+
+  targetContextWorkspaceId = wsId;
+  deleteWsMessage.textContent = `Are you sure you want to delete workspace "${targetWs.name}"?`;
+
+  // Populate other workspaces into target dropdown
+  deleteWsTargetSelect.innerHTML = '';
+  workspaces
+    .filter((w) => w.id !== wsId)
+    .forEach((w) => {
+      const opt = document.createElement('option');
+      opt.value = w.id;
+      opt.textContent = `${w.icon} ${w.name}`;
+      deleteWsTargetSelect.appendChild(opt);
+    });
+
+  deleteWorkspaceModal.classList.remove('hidden');
+}
+
+function closeDeleteWorkspaceModal() {
+  deleteWorkspaceModal.classList.add('hidden');
+  targetContextWorkspaceId = null;
+}
+
+btnDeleteWsCancel.addEventListener('click', closeDeleteWorkspaceModal);
+
+btnDeleteWsConfirm.addEventListener('click', async () => {
+  if (!targetContextWorkspaceId) return;
+
+  const action = document.querySelector('input[name="delete-action"]:checked').value;
+  const moveTabsToWorkspaceId = action === 'move' ? deleteWsTargetSelect.value : null;
+
+  await window.browserAPI.deleteWorkspace({
+    workspaceId: targetContextWorkspaceId,
+    moveTabsToWorkspaceId,
+  });
+
+  closeDeleteWorkspaceModal();
+});
+
+// Context Menus
+function hideContextMenus() {
+  workspaceContextMenu.classList.add('hidden');
+  tabContextMenu.classList.add('hidden');
+}
+
+document.addEventListener('click', hideContextMenus);
+
+function showWorkspaceContextMenu(wsId, x, y) {
+  hideContextMenus();
+  targetContextWorkspaceId = wsId;
+
+  // Disable delete option if last workspace
+  if (workspaces.length <= 1) {
+    ctxWsDelete.style.opacity = '0.4';
+    ctxWsDelete.style.pointerEvents = 'none';
+  } else {
+    ctxWsDelete.style.opacity = '1';
+    ctxWsDelete.style.pointerEvents = 'auto';
+  }
+
+  workspaceContextMenu.style.left = `${Math.min(x, window.innerWidth - 180)}px`;
+  workspaceContextMenu.style.top = `${Math.min(y, window.innerHeight - 100)}px`;
+  workspaceContextMenu.classList.remove('hidden');
+}
+
+ctxWsEdit.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const ws = workspaces.find((w) => w.id === targetContextWorkspaceId);
+  if (ws) openWorkspaceModal(ws);
+});
+
+ctxWsDelete.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (targetContextWorkspaceId) {
+    openDeleteWorkspaceModal(targetContextWorkspaceId);
+  }
+});
+
+function showTabContextMenu(tabId, x, y) {
+  hideContextMenus();
+  targetContextTabId = tabId;
+
+  const tab = tabs.find((t) => t.id === tabId);
+  if (!tab) return;
+
+  tabCtxWsList.innerHTML = '';
+  const otherWorkspaces = workspaces.filter((w) => w.id !== tab.workspaceId);
+
+  if (otherWorkspaces.length === 0) {
+    const noWs = document.createElement('div');
+    noWs.style.padding = '4px 12px';
+    noWs.style.fontSize = '11px';
+    noWs.style.color = '#71717a';
+    noWs.textContent = 'No other workspaces';
+    tabCtxWsList.appendChild(noWs);
+  } else {
+    otherWorkspaces.forEach((w) => {
+      const item = document.createElement('div');
+      item.className = 'context-menu-item';
+      item.innerHTML = `<span>${w.icon}</span> <span>${w.name}</span>`;
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideContextMenus();
+        window.browserAPI.moveTabToWorkspace({ tabId, targetWorkspaceId: w.id });
+      });
+      tabCtxWsList.appendChild(item);
+    });
+  }
+
+  tabContextMenu.style.left = `${Math.min(x, window.innerWidth - 200)}px`;
+  tabContextMenu.style.top = `${Math.min(y, window.innerHeight - 150)}px`;
+  tabContextMenu.classList.remove('hidden');
+}
+
+tabCtxClose.addEventListener('click', (e) => {
+  e.stopPropagation();
+  hideContextMenus();
+  if (targetContextTabId) {
+    window.browserAPI.closeTab(targetContextTabId);
+  }
+});
 
 // Draggable divider implementation
 let isDraggingDivider = false;
@@ -399,7 +729,8 @@ headerRight.addEventListener('click', () => {
 
 // Split view toolbar buttons
 btnSplitToggle.addEventListener('click', () => {
-  if (tabs.length <= 1 && !splitState.isSplit) return;
+  const wsTabs = getActiveWorkspaceTabs();
+  if (wsTabs.length <= 1 && !splitState.isSplit) return;
   window.browserAPI.toggleSplitView();
 });
 
@@ -480,10 +811,24 @@ btnReload.addEventListener('click', () => {
 window.addEventListener('keydown', (e) => {
   const isCtrlOrCmd = e.ctrlKey || e.metaKey;
 
-  // Ctrl+Shift+S / Cmd+Shift+S: Toggle Split View
-  if (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 's') {
+  // Ctrl+1..9: Jump to workspace by position
+  if (isCtrlOrCmd && !e.shiftKey && e.key >= '1' && e.key <= '9') {
+    const idx = parseInt(e.key, 10) - 1;
+    if (workspaces[idx]) {
+      e.preventDefault();
+      window.browserAPI.switchWorkspace(workspaces[idx].id);
+    }
+  }
+  // Ctrl+Shift+N: New Workspace
+  else if (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'n') {
     e.preventDefault();
-    if (tabs.length > 1 || splitState.isSplit) {
+    openWorkspaceModal(null);
+  }
+  // Ctrl+Shift+S: Toggle Split View
+  else if (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    const wsTabs = getActiveWorkspaceTabs();
+    if (wsTabs.length > 1 || splitState.isSplit) {
       window.browserAPI.toggleSplitView();
     }
   }
@@ -510,8 +855,18 @@ window.addEventListener('resize', () => {
 });
 
 // IPC Event Listeners from Main Process
+window.browserAPI.onWorkspaceStateChanged((state) => {
+  workspaces = state.workspaces || [];
+  activeWorkspaceId = state.activeWorkspaceId || (workspaces[0] ? workspaces[0].id : null);
+  renderWorkspaceSwitcher();
+  renderSidebarTabs();
+  updateToolbar();
+  renderSplitLayout();
+});
+
 window.browserAPI.onTabCreated((newTab) => {
-  if (!tabs.find((t) => t.id === newTab.id)) {
+  const existing = tabs.find((t) => t.id === newTab.id);
+  if (!existing) {
     tabs.push({
       ...newTab,
       canGoBack: false,
@@ -519,7 +874,10 @@ window.browserAPI.onTabCreated((newTab) => {
       isLoading: false,
       isCrashed: false,
     });
+  } else {
+    Object.assign(existing, newTab);
   }
+
   if (newTab.activate && !splitState.isSplit) {
     activeTabId = newTab.id;
   }
@@ -567,7 +925,7 @@ window.browserAPI.onPaneFocused((tabId) => {
   renderSplitLayout();
 });
 
-window.browserAPI.onPageCrash(({ tabId, reason }) => {
+window.browserAPI.onPageCrash(({ tabId }) => {
   const tab = tabs.find((t) => t.id === tabId);
   if (tab) {
     tab.isCrashed = true;

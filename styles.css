@@ -24,7 +24,7 @@ body {
   overflow: hidden;
 }
 
-/* Left Sidebar for Vertical Tabs */
+/* Left Sidebar for Workspaces & Vertical Tabs */
 #sidebar {
   width: 220px;
   min-width: 180px;
@@ -45,7 +45,8 @@ body {
 #sidebar.collapsed .sidebar-title,
 #sidebar.collapsed .tab-title,
 #sidebar.collapsed .tab-close-btn,
-#sidebar.collapsed .tab-split-badge {
+#sidebar.collapsed .tab-split-badge,
+#sidebar.collapsed .workspace-add-btn {
   display: none;
 }
 
@@ -54,7 +55,97 @@ body {
   padding: 8px 0;
 }
 
-/* Sidebar Header */
+/* Workspace Switcher Bar at top of Sidebar */
+.workspace-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  background-color: #0c0c0e;
+  border-bottom: 1px solid #1f1f23;
+}
+
+.workspace-list {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  overflow-x: auto;
+  flex: 1;
+  padding-bottom: 2px;
+}
+
+.workspace-list::-webkit-scrollbar {
+  height: 3px;
+}
+.workspace-list::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 2px;
+}
+
+.workspace-item {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background-color: transparent;
+  position: relative;
+  font-size: 14px;
+  border: 1px solid transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.workspace-item:hover {
+  background-color: #1c1c20;
+}
+
+.workspace-item.active {
+  background-color: #27272a;
+  border-color: var(--ws-color, #3b82f6);
+  box-shadow: 0 0 0 1px var(--ws-color, #3b82f6);
+}
+
+.workspace-item.drag-over {
+  outline: 2px dashed #3b82f6;
+  background-color: #1e293b;
+  transform: scale(1.1);
+}
+
+.workspace-dot {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--ws-color, #3b82f6);
+}
+
+.workspace-add-btn {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  border-radius: 4px;
+  border: 1px solid #27272a;
+  background: transparent;
+  color: #a1a1aa;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.workspace-add-btn:hover {
+  background-color: #27272a;
+  color: #fafafa;
+  border-color: #3f3f46;
+}
+
+/* Sidebar Tabs Header */
 .sidebar-header {
   display: flex;
   align-items: center;
@@ -72,6 +163,9 @@ body {
   color: #71717a;
   flex: 1;
   margin-left: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-icon-btn {
@@ -93,7 +187,7 @@ body {
   border-color: #3f3f46;
 }
 
-/* Tab List */
+/* Vertical Tab List */
 .tab-list {
   flex: 1;
   overflow-y: auto;
@@ -140,6 +234,10 @@ body {
   font-weight: 500;
 }
 
+.tab-item.dragging {
+  opacity: 0.4;
+}
+
 .tab-favicon {
   width: 16px;
   height: 16px;
@@ -164,7 +262,7 @@ body {
   white-space: nowrap;
 }
 
-/* Split View Indicator Badge in Sidebar */
+/* Split View Badge */
 .tab-split-badge {
   font-size: 10px;
   font-weight: 600;
@@ -396,7 +494,6 @@ body.in-split-mode .split-active-only {
   transition: outline-color 0.15s ease;
 }
 
-/* Highlight focused pane */
 .split-pane.focused {
   outline-color: #3b82f6;
 }
@@ -587,6 +684,240 @@ body.resizing .split-divider {
 
 .picker-btn.secondary:hover {
   background-color: #3f3f46;
+}
+
+/* Modals */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.modal-card {
+  background-color: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 22px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8);
+}
+
+.modal-card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 14px;
+  color: #f4f4f5;
+}
+
+.modal-card p {
+  font-size: 13px;
+  color: #a1a1aa;
+  margin-bottom: 14px;
+}
+
+.modal-field {
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal-field label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #a1a1aa;
+}
+
+.modal-field input[type="text"] {
+  background-color: #09090b;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #f4f4f5;
+  font-size: 13px;
+  outline: none;
+}
+
+.modal-field input[type="text"]:focus {
+  border-color: #3b82f6;
+}
+
+.emoji-picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.emoji-input {
+  width: 40px !important;
+  text-align: center;
+  font-size: 16px !important;
+}
+
+.emoji-presets {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.emoji-btn {
+  background-color: #222226;
+  border: 1px solid #27272a;
+  border-radius: 4px;
+  font-size: 15px;
+  padding: 4px 6px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.emoji-btn:hover {
+  background-color: #3b82f6;
+}
+
+.color-palette {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform 0.1s ease, border-color 0.15s ease;
+}
+
+.color-swatch:hover {
+  transform: scale(1.15);
+}
+
+.color-swatch.active {
+  border-color: #ffffff;
+  transform: scale(1.15);
+}
+
+.delete-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.modal-select {
+  background-color: #09090b;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: #f4f4f5;
+  font-size: 12px;
+  margin-left: 24px;
+  outline: none;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.modal-btn {
+  padding: 7px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+}
+
+.modal-btn.primary {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
+.modal-btn.primary:hover {
+  background-color: #2563eb;
+}
+
+.modal-btn.secondary {
+  background-color: #27272a;
+  color: #fafafa;
+}
+
+.modal-btn.secondary:hover {
+  background-color: #3f3f46;
+}
+
+.modal-btn.danger {
+  background-color: #dc2626;
+  color: #ffffff;
+}
+
+.modal-btn.danger:hover {
+  background-color: #b91c1c;
+}
+
+/* Context Menus */
+.context-menu {
+  position: fixed;
+  background-color: #1f1f23;
+  border: 1px solid #333338;
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  z-index: 2000;
+  min-width: 170px;
+}
+
+.context-menu-header {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #71717a;
+  letter-spacing: 0.05em;
+}
+
+.context-menu-item {
+  padding: 7px 12px;
+  font-size: 12px;
+  color: #e4e4e7;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background-color 0.12s ease;
+}
+
+.context-menu-item:hover {
+  background-color: #2d2d33;
+}
+
+.context-menu-item.danger:hover {
+  background-color: #7f1d1d;
+  color: #fca5a5;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background-color: #27272a;
+  margin: 4px 0;
 }
 
 /* Helper Utilities */

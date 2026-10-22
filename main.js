@@ -1,13 +1,15 @@
-// Coder Browser - Step 3: WebContentsView Migration & Split View
+// Coder Browser - Step 4: Workspaces & Multi-Context Tabs
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const TabManager = require('./src/main/tabManager');
 const SplitManager = require('./src/main/splitManager');
+const WorkspaceManager = require('./src/main/workspaceManager');
 const setupIpcHandlers = require('./src/main/ipcHandlers');
 
 let mainWindow = null;
 let tabManager = null;
 let splitManager = null;
+let workspaceManager = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -24,17 +26,19 @@ function createWindow() {
     title: 'Coder Browser',
   });
 
-  // Initialize managers
+  // Initialize modular managers
   tabManager = new TabManager(mainWindow);
   splitManager = new SplitManager(mainWindow, tabManager);
+  workspaceManager = new WorkspaceManager(mainWindow, tabManager, splitManager);
 
-  // Wire TabManager events to send IPC notifications to UI
+  // Wire TabManager events
   tabManager.onTabCreated = (tab, activate) => {
     mainWindow.webContents.send('tab:created', {
       id: tab.id,
       url: tab.url,
       title: tab.title,
       favicon: tab.favicon,
+      workspaceId: tab.workspaceId,
       activate,
     });
 
@@ -49,20 +53,8 @@ function createWindow() {
   tabManager.onTabClosed = (tabId) => {
     mainWindow.webContents.send('tab:closed', tabId);
     splitManager.handleTabClosed(tabId);
-
-    // If all tabs closed, automatically spawn a fresh blank tab
-    if (tabManager.tabs.size === 0) {
-      tabManager.createTab('https://duckduckgo.com', true);
-    } else if (!splitManager.isSplit) {
-      // Switch to closest available tab if active tab was closed
-      if (tabManager.activeTabId === tabId) {
-        const remainingTabs = Array.from(tabManager.tabs.keys());
-        const nextTabId = remainingTabs[remainingTabs.length - 1];
-        tabManager.activeTabId = nextTabId;
-        splitManager.focusedTabId = nextTabId;
-        splitManager.applyLayout();
-        mainWindow.webContents.send('tab:switched', nextTabId);
-      }
+    if (workspaceManager) {
+      mainWindow.webContents.send('workspace:stateChanged', workspaceManager.getState());
     }
   };
 
@@ -76,16 +68,17 @@ function createWindow() {
       canGoBack: tab.canGoBack,
       canGoForward: tab.canGoForward,
       isCrashed: tab.isCrashed,
+      workspaceId: tab.workspaceId,
     });
   };
 
-  // Clicking inside a WebContentsView notifies the UI to highlight that pane
+  // Focus synchronization
   tabManager.onViewFocus = (tabId) => {
     splitManager.setFocusedTab(tabId);
     mainWindow.webContents.send('split:paneFocused', tabId);
   };
 
-  // Gracefully handle render crashes without crashing the browser app
+  // Crash recovery
   tabManager.onTabCrash = (tab, details) => {
     mainWindow.webContents.send('tab:crashed', {
       tabId: tab.id,
@@ -93,18 +86,27 @@ function createWindow() {
     });
   };
 
-  // Handle window.open links by opening as new tab
+  // New-window link handler
   tabManager.onNewWindow = (url) => {
-    tabManager.createTab(url, true);
+    const tab = tabManager.createTab(url, true);
+    if (workspaceManager) {
+      tab.workspaceId = workspaceManager.activeWorkspaceId;
+      workspaceManager.registerTab(tab.id);
+    }
   };
 
-  // Split state changes forwarded to renderer
+  // Split state updates
   splitManager.onStateChanged = (state) => {
     mainWindow.webContents.send('split:stateChanged', state);
   };
 
-  // Register IPC handlers
-  setupIpcHandlers(mainWindow, tabManager, splitManager);
+  // Workspace state updates
+  workspaceManager.onWorkspaceChanged = (state) => {
+    mainWindow.webContents.send('workspace:stateChanged', state);
+  };
+
+  // Register all IPC handlers
+  setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager);
 
   mainWindow.loadFile('index.html');
 
@@ -113,11 +115,11 @@ function createWindow() {
     splitManager.applyLayout();
   });
 
-  // Create initial tab once UI has loaded
+  // Restore or initialize workspaces once the UI finishes loading
   mainWindow.webContents.on('did-finish-load', () => {
-    if (tabManager.tabs.size === 0) {
-      tabManager.createTab('https://duckduckgo.com', true);
-    }
+    workspaceManager.init();
+    mainWindow.webContents.send('workspace:stateChanged', workspaceManager.getState());
+    splitManager.applyLayout();
   });
 }
 
@@ -130,6 +132,12 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+});
+
+app.on('before-quit', () => {
+  if (workspaceManager) {
+    workspaceManager.saveToDisk();
+  }
 });
 
 app.on('window-all-closed', () => {

@@ -1,4 +1,4 @@
-// Tab Manager - Manages WebContentsView instances and tab lifecycles
+// Tab Manager - Manages WebContentsView instances, lifecycle, and security
 const { WebContentsView } = require('electron');
 
 class TabManager {
@@ -19,8 +19,9 @@ class TabManager {
 
   /**
    * Creates a new tab backed by a WebContentsView.
+   * If isLazy is true, URL navigation is postponed until the tab is first viewed.
    */
-  createTab(initialUrl = 'https://duckduckgo.com', activate = true) {
+  createTab(initialUrl = 'https://duckduckgo.com', activate = true, isLazy = false) {
     const tabId = `tab-${++this.tabCounter}`;
 
     // Security: strict isolation for all web contents
@@ -41,6 +42,8 @@ class TabManager {
       canGoBack: false,
       canGoForward: false,
       isCrashed: false,
+      isLazy: !!isLazy,
+      workspaceId: null,
       view: view,
     };
 
@@ -108,8 +111,10 @@ class TabManager {
       if (this.onTabUpdated) this.onTabUpdated(tab);
     });
 
-    // Load target URL
-    wc.loadURL(initialUrl).catch(() => {});
+    // Load target URL immediately if not lazy
+    if (!isLazy) {
+      wc.loadURL(initialUrl).catch(() => {});
+    }
 
     if (this.onTabCreated) {
       this.onTabCreated(tab, activate);
@@ -132,6 +137,7 @@ class TabManager {
       canGoBack: t.canGoBack,
       canGoForward: t.canGoForward,
       isCrashed: t.isCrashed,
+      workspaceId: t.workspaceId,
     }));
   }
 
@@ -162,6 +168,7 @@ class TabManager {
     const tab = this.tabs.get(tabId);
     if (tab) {
       tab.isCrashed = false;
+      tab.isLazy = false;
       tab.view.webContents.loadURL(url).catch(() => {});
     }
   }
@@ -184,7 +191,12 @@ class TabManager {
     const tab = this.tabs.get(tabId);
     if (tab) {
       tab.isCrashed = false;
-      tab.view.webContents.reload();
+      if (tab.isLazy) {
+        tab.isLazy = false;
+        tab.view.webContents.loadURL(tab.url).catch(() => {});
+      } else {
+        tab.view.webContents.reload();
+      }
     }
   }
 

@@ -22,6 +22,14 @@ contextBridge.exposeInMainWorld('browserAPI', {
   getSplitState: () => ipcRenderer.invoke('split:getState'),
   updateLayoutBounds: (bounds) => ipcRenderer.invoke('layout:updateBounds', bounds),
 
+  // Workspaces
+  getWorkspaceState: () => ipcRenderer.invoke('workspace:getState'),
+  createWorkspace: (options) => ipcRenderer.invoke('workspace:create', options),
+  switchWorkspace: (workspaceId) => ipcRenderer.invoke('workspace:switch', workspaceId),
+  updateWorkspace: (options) => ipcRenderer.invoke('workspace:update', options),
+  deleteWorkspace: (options) => ipcRenderer.invoke('workspace:delete', options),
+  moveTabToWorkspace: (options) => ipcRenderer.invoke('workspace:moveTab', options),
+
   // Event Subscriptions
   onTabCreated: (callback) => {
     ipcRenderer.on('tab:created', (e, data) => callback(data));
@@ -43,5 +51,8 @@ contextBridge.exposeInMainWorld('browserAPI', {
   },
   onPageCrash: (callback) => {
     ipcRenderer.on('tab:crashed', (e, data) => callback(data));
+  },
+  onWorkspaceStateChanged: (callback) => {
+    ipcRenderer.on('workspace:stateChanged', (e, data) => callback(data));
   },
 });
