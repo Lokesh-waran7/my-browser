@@ -1,0 +1,19 @@
+{
+  "name": "my-browser",
+  "version": "0.1.0",
+  "description": "Minimal coder-focused browser built with Electron",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": [
+    "browser",
+    "electron"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^45.0.0"
+  }
+}

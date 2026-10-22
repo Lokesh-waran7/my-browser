@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coder Browser</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Top Bar: Tabs & Controls -->
+  <header id="browser-chrome">
+    <!-- Tab Bar (Step 1: One working tab) -->
+    <div id="tab-bar">
+      <div class="tab active" id="current-tab">
+        <span class="tab-favicon" id="tab-favicon">🌐</span>
+        <span class="tab-title" id="tab-title">New Tab</span>
+      </div>
+    </div>
+
+    <!-- Navigation Bar: Back, Forward, Reload, Address Bar -->
+    <nav id="nav-bar">
+      <div class="nav-controls">
+        <button id="btn-back" class="nav-btn" title="Back" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+        <button id="btn-forward" class="nav-btn" title="Forward" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </button>
+        <button id="btn-reload" class="nav-btn" title="Reload">
+          <svg id="reload-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Address Bar Form -->
+      <form id="url-form">
+        <div class="url-input-wrapper">
+          <span class="url-security-icon" id="security-icon">🔒</span>
+          <input 
+            type="text" 
+            id="url-input" 
+            placeholder="Search or enter web address" 
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+        <button type="submit" id="btn-go" class="nav-btn-go">Go</button>
+      </form>
+    </nav>
+  </header>
+
+  <!-- Webview Container (Page Content) -->
+  <main id="webview-container">
+    <webview 
+      id="webview" 
+      src="https://duckduckgo.com" 
+      allowpopups
+    ></webview>
+  </main>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
