@@ -1,79 +1,144 @@
-// Coder Browser - Step 2: Vertical Tabs & Tab Management
+// Coder Browser - Step 3: Renderer Logic (IPC Bridge, Split View & Vertical Tabs)
 
 // DOM Elements
-const tabList = document.getElementById('tab-list');
+const sidebar = document.getElementById('sidebar');
+const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
 const btnNewTab = document.getElementById('btn-new-tab');
-const webviewContainer = document.getElementById('webview-container');
-const urlForm = document.getElementById('url-form');
-const urlInput = document.getElementById('url-input');
+const tabList = document.getElementById('tab-list');
+
 const btnBack = document.getElementById('btn-back');
 const btnForward = document.getElementById('btn-forward');
 const btnReload = document.getElementById('btn-reload');
+const urlForm = document.getElementById('url-form');
+const urlInput = document.getElementById('url-input');
 const securityIcon = document.getElementById('security-icon');
 
-// State tracking
+const btnSplitToggle = document.getElementById('btn-split-toggle');
+const btnSwapPanes = document.getElementById('btn-swap-panes');
+const btnCloseSplit = document.getElementById('btn-close-split');
+
+const viewArea = document.getElementById('view-area');
+const viewMountSingle = document.getElementById('view-mount-single');
+const splitContainer = document.getElementById('split-container');
+const paneLeft = document.getElementById('pane-left');
+const paneRight = document.getElementById('pane-right');
+const viewMountLeft = document.getElementById('view-mount-left');
+const viewMountRight = document.getElementById('view-mount-right');
+const splitDivider = document.getElementById('split-divider');
+
+const headerLeft = document.getElementById('header-left');
+const headerRight = document.getElementById('header-right');
+const faviconLeft = document.getElementById('favicon-left');
+const faviconRight = document.getElementById('favicon-right');
+const titleLeft = document.getElementById('title-left');
+const titleRight = document.getElementById('title-right');
+
+const tabPicker = document.getElementById('tab-picker');
+const pickerTabList = document.getElementById('picker-tab-list');
+const btnPickerNewTab = document.getElementById('btn-picker-new-tab');
+const btnPickerCancel = document.getElementById('btn-picker-cancel');
+
+const crashBanner = document.getElementById('crash-banner');
+const btnReloadCrash = document.getElementById('btn-reload-crash');
+
+// Application State
 let tabs = [];
 let activeTabId = null;
-let tabIdSequence = 0;
+let splitState = {
+  isSplit: false,
+  isPickingRight: false,
+  leftTabId: null,
+  rightTabId: null,
+  focusedTabId: null,
+  splitRatio: 0.5,
+};
+let crashedTabId = null;
 
 /**
- * Normalizes user input into a valid URL or search engine query.
+ * Normalizes input text into a valid URL or search engine query.
  */
 function normalizeUrl(input) {
   const trimmed = input.trim();
   if (!trimmed) return 'https://duckduckgo.com';
 
-  // Keep explicit protocol if present
   if (/^https?:\/\//i.test(trimmed) || /^file:\/\//i.test(trimmed)) {
     return trimmed;
   }
-
-  // Handle localhost or IP addresses
   if (/^localhost(:\d+)?/i.test(trimmed) || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?/.test(trimmed)) {
     return `http://${trimmed}`;
   }
-
-  // Handle standard domain names (e.g. github.com, news.ycombinator.com)
   if (/^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+/i.test(trimmed) && !trimmed.includes(' ')) {
     return `https://${trimmed}`;
   }
-
-  // Fallback to DuckDuckGo search query
   return `https://duckduckgo.com/?q=${encodeURIComponent(trimmed)}`;
 }
 
 /**
- * Returns the currently active tab object.
+ * Returns the currently active/focused tab object.
  */
-function getActiveTab() {
-  return tabs.find((t) => t.id === activeTabId);
+function getTargetTab() {
+  const targetId = splitState.isSplit ? splitState.focusedTabId : activeTabId;
+  return tabs.find((t) => t.id === targetId) || tabs[0];
 }
 
 /**
- * Updates back/forward button disabled states for the active tab.
+ * Sends DOM bounding rectangles to main process to align WebContentsViews.
  */
-function updateNavigationControls() {
-  const activeTab = getActiveTab();
-  if (!activeTab || !activeTab.webviewElement) {
-    btnBack.disabled = true;
-    btnForward.disabled = true;
-    return;
-  }
+function sendLayoutBounds() {
+  const singleRect = viewMountSingle.getBoundingClientRect();
+  const leftRect = viewMountLeft.getBoundingClientRect();
+  const rightRect = viewMountRight.getBoundingClientRect();
 
-  try {
-    btnBack.disabled = !activeTab.webviewElement.canGoBack();
-    btnForward.disabled = !activeTab.webviewElement.canGoForward();
-  } catch (err) {
-    btnBack.disabled = true;
-    btnForward.disabled = true;
-  }
+  window.browserAPI.updateLayoutBounds({
+    viewArea: {
+      x: singleRect.left,
+      y: singleRect.top,
+      width: singleRect.width,
+      height: singleRect.height,
+    },
+    leftPane: {
+      x: leftRect.left,
+      y: leftRect.top,
+      width: leftRect.width,
+      height: leftRect.height,
+    },
+    rightPane: {
+      x: rightRect.left,
+      y: rightRect.top,
+      width: rightRect.width,
+      height: rightRect.height,
+    },
+    splitRatio: splitState.splitRatio,
+  });
 }
 
 /**
- * Updates reload/stop button icon based on loading status.
+ * Updates UI controls (address bar, security icon, navigation buttons).
  */
-function updateReloadButton(isLoading) {
-  if (isLoading) {
+function updateToolbar() {
+  const targetTab = getTargetTab();
+  if (!targetTab) return;
+
+  urlInput.value = targetTab.url || '';
+
+  // Protocol security badge
+  if (targetTab.url && targetTab.url.startsWith('https://')) {
+    securityIcon.textContent = '🔒';
+    securityIcon.title = 'Secure connection (HTTPS)';
+  } else if (targetTab.url && targetTab.url.startsWith('http://')) {
+    securityIcon.textContent = '⚠️';
+    securityIcon.title = 'Insecure connection (HTTP)';
+  } else {
+    securityIcon.textContent = '🌐';
+    securityIcon.title = 'Local or internal page';
+  }
+
+  // Navigation button states
+  btnBack.disabled = !targetTab.canGoBack;
+  btnForward.disabled = !targetTab.canGoForward;
+
+  // Reload / Stop button
+  if (targetTab.isLoading) {
     btnReload.title = 'Stop';
     btnReload.innerHTML = `
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -90,224 +155,299 @@ function updateReloadButton(isLoading) {
       </svg>
     `;
   }
-}
 
-/**
- * Updates the protocol security icon (HTTPS vs HTTP).
- */
-function updateSecurityIndicator(url) {
-  if (!url) {
-    securityIcon.textContent = '🔒';
-    securityIcon.title = 'Secure';
-    return;
-  }
-
-  if (url.startsWith('https://')) {
-    securityIcon.textContent = '🔒';
-    securityIcon.title = 'Secure connection (HTTPS)';
-  } else if (url.startsWith('http://')) {
-    securityIcon.textContent = '⚠️';
-    securityIcon.title = 'Insecure connection (HTTP)';
+  // Edge case: Disable split view button if only one tab is open
+  if (tabs.length <= 1 && !splitState.isSplit) {
+    btnSplitToggle.disabled = true;
+    btnSplitToggle.title = 'Open at least 2 tabs to enable Split View';
   } else {
-    securityIcon.textContent = '🌐';
-    securityIcon.title = 'Local or internal page';
+    btnSplitToggle.disabled = false;
+    btnSplitToggle.title = splitState.isSplit
+      ? 'Exit Split View (Ctrl+Shift+S)'
+      : 'Split View (Ctrl+Shift+S)';
+  }
+
+  // Crash banner visibility
+  if (targetTab.isCrashed) {
+    crashedTabId = targetTab.id;
+    crashBanner.classList.remove('hidden');
+  } else {
+    crashBanner.classList.add('hidden');
   }
 }
 
 /**
- * Switches the active tab to the specified tab ID.
+ * Renders the vertical tab list in the sidebar.
  */
-function switchTab(tabId) {
-  const targetTab = tabs.find((t) => t.id === tabId);
-  if (!targetTab) return;
+function renderSidebarTabs() {
+  tabList.innerHTML = '';
+  const currentFocusedId = splitState.isSplit ? splitState.focusedTabId : activeTabId;
 
-  activeTabId = tabId;
-
-  // Toggle active class on sidebar tabs and webview elements
-  tabs.forEach((t) => {
-    const isActive = t.id === tabId;
-    t.tabElement.classList.toggle('active', isActive);
-    t.webviewElement.classList.toggle('active', isActive);
-  });
-
-  // Sync navigation bar controls with the active tab's current state
-  const currentUrl = targetTab.url || targetTab.webviewElement.getURL() || '';
-  urlInput.value = currentUrl;
-  updateSecurityIndicator(currentUrl);
-  updateNavigationControls();
-  updateReloadButton(targetTab.isLoading);
-  document.title = `${targetTab.title || 'New Tab'} - Coder Browser`;
-}
-
-/**
- * Creates a new tab, instantiates its <webview>, and adds it to the sidebar.
- */
-function createTab(url = 'https://duckduckgo.com', activate = true) {
-  const tabId = `tab-${++tabIdSequence}`;
-
-  // 1. Create sidebar tab item
-  const tabItem = document.createElement('div');
-  tabItem.className = 'tab-item';
-  tabItem.id = `sidebar-${tabId}`;
-
-  const faviconSpan = document.createElement('span');
-  faviconSpan.className = 'tab-favicon';
-  faviconSpan.textContent = '🌐';
-
-  const titleSpan = document.createElement('span');
-  titleSpan.className = 'tab-title';
-  titleSpan.textContent = 'New Tab';
-
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'tab-close-btn';
-  closeBtn.title = 'Close tab';
-  closeBtn.innerHTML = '&times;';
-
-  tabItem.appendChild(faviconSpan);
-  tabItem.appendChild(titleSpan);
-  tabItem.appendChild(closeBtn);
-  tabList.appendChild(tabItem);
-
-  // 2. Create corresponding <webview> in webview container
-  const webview = document.createElement('webview');
-  webview.className = 'tab-webview';
-  webview.id = `webview-${tabId}`;
-  webview.setAttribute('src', url);
-  webview.setAttribute('allowpopups', '');
-  webviewContainer.appendChild(webview);
-
-  // 3. Tab state object
-  const tab = {
-    id: tabId,
-    url: url,
-    title: 'New Tab',
-    favicon: null,
-    isLoading: false,
-    tabElement: tabItem,
-    titleElement: titleSpan,
-    faviconElement: faviconSpan,
-    webviewElement: webview,
-  };
-
-  tabs.push(tab);
-
-  // 4. Attach event listeners for webview lifecycle
-  webview.addEventListener('did-start-loading', () => {
-    tab.isLoading = true;
-    if (tab.id === activeTabId) {
-      updateReloadButton(true);
+  tabs.forEach((tab) => {
+    const tabEl = document.createElement('div');
+    tabEl.className = 'tab-item';
+    if (tab.id === currentFocusedId) {
+      tabEl.classList.add('active');
     }
-  });
 
-  webview.addEventListener('did-stop-loading', () => {
-    tab.isLoading = false;
-    if (tab.id === activeTabId) {
-      updateReloadButton(false);
-      updateNavigationControls();
+    // Favicon
+    const faviconSpan = document.createElement('span');
+    faviconSpan.className = 'tab-favicon';
+    if (tab.favicon) {
+      faviconSpan.innerHTML = `<img src="${tab.favicon}" alt="" onerror="this.outerHTML='🌐'" />`;
+    } else {
+      faviconSpan.textContent = '🌐';
     }
-  });
 
-  const onNavigate = (event) => {
-    tab.url = event.url;
-    if (tab.id === activeTabId) {
-      urlInput.value = event.url;
-      updateSecurityIndicator(event.url);
-      updateNavigationControls();
-    }
-  };
+    // Title
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'tab-title';
+    titleSpan.textContent = tab.title || 'New Tab';
+    titleSpan.title = tab.title || 'New Tab';
 
-  webview.addEventListener('did-navigate', onNavigate);
-  webview.addEventListener('did-navigate-in-page', onNavigate);
+    tabEl.appendChild(faviconSpan);
+    tabEl.appendChild(titleSpan);
 
-  // Update tab title when web page title updates
-  webview.addEventListener('page-title-updated', (event) => {
-    if (event.title) {
-      tab.title = event.title;
-      tab.titleElement.textContent = event.title;
-      tab.titleElement.title = event.title;
-      if (tab.id === activeTabId) {
-        document.title = `${event.title} - Coder Browser`;
+    // In split view, display split indicator badge
+    if (splitState.isSplit) {
+      if (tab.id === splitState.leftTabId) {
+        const badge = document.createElement('span');
+        badge.className = 'tab-split-badge';
+        badge.textContent = '◫ Left';
+        badge.title = 'Currently in left split pane';
+        tabEl.appendChild(badge);
+      } else if (tab.id === splitState.rightTabId) {
+        const badge = document.createElement('span');
+        badge.className = 'tab-split-badge';
+        badge.textContent = '◫ Right';
+        badge.title = 'Currently in right split pane';
+        tabEl.appendChild(badge);
       }
     }
+
+    // Close button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'tab-close-btn';
+    closeBtn.title = 'Close tab';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      window.browserAPI.closeTab(tab.id);
+    });
+
+    tabEl.appendChild(closeBtn);
+
+    // Switch tab on click
+    tabEl.addEventListener('click', () => {
+      window.browserAPI.switchTab(tab.id);
+    });
+
+    tabList.appendChild(tabEl);
   });
-
-  // Update tab favicon when available
-  webview.addEventListener('page-favicon-updated', (event) => {
-    if (event.favicons && event.favicons.length > 0) {
-      const iconUrl = event.favicons[0];
-      tab.favicon = iconUrl;
-      tab.faviconElement.innerHTML = `<img src="${iconUrl}" alt="" onerror="this.outerHTML='🌐'" />`;
-    }
-  });
-
-  webview.addEventListener('dom-ready', () => {
-    if (tab.id === activeTabId) {
-      const currentUrl = webview.getURL();
-      if (currentUrl) {
-        tab.url = currentUrl;
-        urlInput.value = currentUrl;
-        updateSecurityIndicator(currentUrl);
-      }
-      updateNavigationControls();
-    }
-  });
-
-  // 5. Attach sidebar interaction handlers
-  tabItem.addEventListener('click', () => {
-    switchTab(tabId);
-  });
-
-  closeBtn.addEventListener('click', (e) => {
-    e.stopPropagation(); // Avoid triggering switchTab
-    closeTab(tabId);
-  });
-
-  // Activate the newly created tab if requested
-  if (activate) {
-    switchTab(tabId);
-  }
-
-  return tab;
 }
 
 /**
- * Closes the tab by ID. If it's the last tab, opens a new blank tab.
+ * Updates split view panes, headers, divider ratio, and tab picker.
  */
-function closeTab(tabId) {
-  const index = tabs.findIndex((t) => t.id === tabId);
-  if (index === -1) return;
+function renderSplitLayout() {
+  if (splitState.isSplit) {
+    document.body.classList.add('in-split-mode');
+    btnSplitToggle.classList.add('active');
+    viewMountSingle.classList.add('hidden');
+    splitContainer.classList.remove('hidden');
 
-  const [closingTab] = tabs.splice(index, 1);
-  closingTab.tabElement.remove();
-  closingTab.webviewElement.remove();
+    // Apply split ratio (min 250px)
+    const ratio = splitState.splitRatio || 0.5;
+    paneLeft.style.width = `calc(${ratio * 100}% - 4px)`;
+    paneRight.style.width = `calc(${(1 - ratio) * 100}% - 4px)`;
 
-  // If no tabs remain, open a fresh tab instead of quitting
-  if (tabs.length === 0) {
-    createTab('https://duckduckgo.com', true);
-    return;
+    // Focus highlight borders
+    paneLeft.classList.toggle('focused', splitState.focusedTabId === splitState.leftTabId);
+    paneRight.classList.toggle('focused', splitState.focusedTabId === splitState.rightTabId);
+
+    // Populate Left Pane Header
+    const leftTab = tabs.find((t) => t.id === splitState.leftTabId);
+    if (leftTab) {
+      titleLeft.textContent = leftTab.title || 'Left Pane';
+      titleLeft.title = leftTab.title || 'Left Pane';
+      faviconLeft.innerHTML = leftTab.favicon
+        ? `<img src="${leftTab.favicon}" alt="" onerror="this.outerHTML='🌐'" />`
+        : '🌐';
+    }
+
+    // Populate Right Pane Header & Picker
+    const rightTab = tabs.find((t) => t.id === splitState.rightTabId);
+    if (splitState.isPickingRight) {
+      titleRight.textContent = 'Select Tab...';
+      faviconRight.textContent = '◫';
+      tabPicker.classList.remove('hidden');
+      renderTabPicker();
+    } else {
+      tabPicker.classList.add('hidden');
+      if (rightTab) {
+        titleRight.textContent = rightTab.title || 'Right Pane';
+        titleRight.title = rightTab.title || 'Right Pane';
+        faviconRight.innerHTML = rightTab.favicon
+          ? `<img src="${rightTab.favicon}" alt="" onerror="this.outerHTML='🌐'" />`
+          : '🌐';
+      }
+    }
+  } else {
+    document.body.classList.remove('in-split-mode');
+    btnSplitToggle.classList.remove('active');
+    viewMountSingle.classList.remove('hidden');
+    splitContainer.classList.add('hidden');
+    tabPicker.classList.add('hidden');
   }
 
-  // If the closed tab was the active tab, activate the closest available tab
-  if (activeTabId === tabId) {
-    const nextIndex = Math.min(index, tabs.length - 1);
-    switchTab(tabs[nextIndex].id);
+  sendLayoutBounds();
+}
+
+/**
+ * Renders list of candidate tabs in right pane picker.
+ */
+function renderTabPicker() {
+  pickerTabList.innerHTML = '';
+  const candidateTabs = tabs.filter((t) => t.id !== splitState.leftTabId);
+
+  if (candidateTabs.length === 0) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.style.fontSize = '12px';
+    emptyMsg.style.color = '#71717a';
+    emptyMsg.style.padding = '8px 0';
+    emptyMsg.textContent = 'No other tabs open. Click "+ Open New Tab" below:';
+    pickerTabList.appendChild(emptyMsg);
+  } else {
+    candidateTabs.forEach((tab) => {
+      const item = document.createElement('div');
+      item.className = 'picker-tab-item';
+
+      const icon = document.createElement('span');
+      icon.className = 'tab-favicon';
+      icon.innerHTML = tab.favicon
+        ? `<img src="${tab.favicon}" alt="" onerror="this.outerHTML='🌐'" />`
+        : '🌐';
+
+      const title = document.createElement('span');
+      title.className = 'tab-title';
+      title.textContent = tab.title || 'New Tab';
+
+      item.appendChild(icon);
+      item.appendChild(title);
+
+      item.addEventListener('click', () => {
+        window.browserAPI.setSplitRightTab(tab.id);
+      });
+
+      pickerTabList.appendChild(item);
+    });
   }
 }
 
-// Top "+" button creates a new tab
+// Draggable divider implementation
+let isDraggingDivider = false;
+
+splitDivider.addEventListener('pointerdown', (e) => {
+  if (!splitState.isSplit) return;
+  isDraggingDivider = true;
+  splitDivider.setPointerCapture(e.pointerId);
+  document.body.classList.add('resizing');
+});
+
+splitDivider.addEventListener('pointermove', (e) => {
+  if (!isDraggingDivider) return;
+  const viewRect = viewArea.getBoundingClientRect();
+  const dividerWidth = 8;
+  const minWidth = 250;
+
+  let leftWidth = e.clientX - viewRect.left;
+  if (leftWidth < minWidth) leftWidth = minWidth;
+  if (viewRect.width - leftWidth - dividerWidth < minWidth) {
+    leftWidth = viewRect.width - minWidth - dividerWidth;
+  }
+
+  const ratio = leftWidth / viewRect.width;
+  splitState.splitRatio = ratio;
+  paneLeft.style.width = `calc(${ratio * 100}% - 4px)`;
+  paneRight.style.width = `calc(${(1 - ratio) * 100}% - 4px)`;
+  sendLayoutBounds();
+});
+
+splitDivider.addEventListener('pointerup', (e) => {
+  if (isDraggingDivider) {
+    isDraggingDivider = false;
+    try {
+      splitDivider.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+    document.body.classList.remove('resizing');
+    sendLayoutBounds();
+  }
+});
+
+// Click pane headers to focus pane
+headerLeft.addEventListener('click', () => {
+  if (splitState.leftTabId) {
+    window.browserAPI.setFocusedPane(splitState.leftTabId);
+  }
+});
+
+headerRight.addEventListener('click', () => {
+  if (splitState.rightTabId) {
+    window.browserAPI.setFocusedPane(splitState.rightTabId);
+  }
+});
+
+// Split view toolbar buttons
+btnSplitToggle.addEventListener('click', () => {
+  if (tabs.length <= 1 && !splitState.isSplit) return;
+  window.browserAPI.toggleSplitView();
+});
+
+btnSwapPanes.addEventListener('click', () => {
+  window.browserAPI.swapSplitPanes();
+});
+
+btnCloseSplit.addEventListener('click', () => {
+  window.browserAPI.closeSplitView();
+});
+
+// Tab picker actions
+btnPickerNewTab.addEventListener('click', async () => {
+  const newTab = await window.browserAPI.createTab('https://duckduckgo.com', false);
+  window.browserAPI.setSplitRightTab(newTab.id);
+});
+
+btnPickerCancel.addEventListener('click', () => {
+  window.browserAPI.closeSplitView();
+});
+
+// Crash reload button
+btnReloadCrash.addEventListener('click', () => {
+  if (crashedTabId) {
+    window.browserAPI.reload(crashedTabId);
+  }
+});
+
+// Toggle Sidebar collapse
+btnToggleSidebar.addEventListener('click', () => {
+  sidebar.classList.toggle('collapsed');
+  setTimeout(sendLayoutBounds, 250);
+});
+
+// New Tab button
 btnNewTab.addEventListener('click', () => {
-  createTab('https://duckduckgo.com', true);
+  window.browserAPI.createTab('https://duckduckgo.com', true);
   urlInput.focus();
   urlInput.select();
 });
 
-// Address bar form submission controls active tab
+// Address Bar navigation
 urlForm.addEventListener('submit', (e) => {
   e.preventDefault();
-  const activeTab = getActiveTab();
-  if (activeTab) {
-    const targetUrl = normalizeUrl(urlInput.value);
-    activeTab.webviewElement.loadURL(targetUrl);
+  const targetTab = getTargetTab();
+  if (targetTab) {
+    const url = normalizeUrl(urlInput.value);
+    window.browserAPI.navigate(targetTab.id, url);
   }
 });
 
@@ -315,47 +455,125 @@ urlInput.addEventListener('focus', () => {
   urlInput.select();
 });
 
-// Back / Forward / Reload controls for active tab
+// Back / Forward / Reload controls
 btnBack.addEventListener('click', () => {
-  const activeTab = getActiveTab();
-  if (activeTab && activeTab.webviewElement.canGoBack()) {
-    activeTab.webviewElement.goBack();
-  }
+  const targetTab = getTargetTab();
+  if (targetTab) window.browserAPI.goBack(targetTab.id);
 });
 
 btnForward.addEventListener('click', () => {
-  const activeTab = getActiveTab();
-  if (activeTab && activeTab.webviewElement.canGoForward()) {
-    activeTab.webviewElement.goForward();
-  }
+  const targetTab = getTargetTab();
+  if (targetTab) window.browserAPI.goForward(targetTab.id);
 });
 
 btnReload.addEventListener('click', () => {
-  const activeTab = getActiveTab();
-  if (!activeTab) return;
-
-  if (activeTab.isLoading) {
-    activeTab.webviewElement.stop();
+  const targetTab = getTargetTab();
+  if (!targetTab) return;
+  if (targetTab.isLoading) {
+    window.browserAPI.stop(targetTab.id);
   } else {
-    activeTab.webviewElement.reload();
+    window.browserAPI.reload(targetTab.id);
   }
 });
 
-// Keyboard shortcuts for convenience (Ctrl+T for new tab, Ctrl+W to close active tab)
+// Keyboard Shortcuts
 window.addEventListener('keydown', (e) => {
   const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-  if (isCtrlOrCmd && e.key.toLowerCase() === 't') {
+
+  // Ctrl+Shift+S / Cmd+Shift+S: Toggle Split View
+  if (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 's') {
     e.preventDefault();
-    createTab('https://duckduckgo.com', true);
+    if (tabs.length > 1 || splitState.isSplit) {
+      window.browserAPI.toggleSplitView();
+    }
+  }
+  // Ctrl+T: New Tab
+  else if (isCtrlOrCmd && !e.shiftKey && e.key.toLowerCase() === 't') {
+    e.preventDefault();
+    window.browserAPI.createTab('https://duckduckgo.com', true);
     urlInput.focus();
     urlInput.select();
-  } else if (isCtrlOrCmd && e.key.toLowerCase() === 'w') {
+  }
+  // Ctrl+W: Close Active Tab
+  else if (isCtrlOrCmd && !e.shiftKey && e.key.toLowerCase() === 'w') {
     e.preventDefault();
-    if (activeTabId) {
-      closeTab(activeTabId);
+    const targetTab = getTargetTab();
+    if (targetTab) {
+      window.browserAPI.closeTab(targetTab.id);
     }
   }
 });
 
-// Initialize with the first default tab on startup
-createTab('https://duckduckgo.com', true);
+// Window resize handling
+window.addEventListener('resize', () => {
+  sendLayoutBounds();
+});
+
+// IPC Event Listeners from Main Process
+window.browserAPI.onTabCreated((newTab) => {
+  if (!tabs.find((t) => t.id === newTab.id)) {
+    tabs.push({
+      ...newTab,
+      canGoBack: false,
+      canGoForward: false,
+      isLoading: false,
+      isCrashed: false,
+    });
+  }
+  if (newTab.activate && !splitState.isSplit) {
+    activeTabId = newTab.id;
+  }
+  renderSidebarTabs();
+  updateToolbar();
+  renderSplitLayout();
+});
+
+window.browserAPI.onTabClosed((tabId) => {
+  tabs = tabs.filter((t) => t.id !== tabId);
+  renderSidebarTabs();
+  updateToolbar();
+  renderSplitLayout();
+});
+
+window.browserAPI.onTabUpdated((updatedTab) => {
+  const index = tabs.findIndex((t) => t.id === updatedTab.id);
+  if (index !== -1) {
+    tabs[index] = { ...tabs[index], ...updatedTab };
+  }
+  renderSidebarTabs();
+  updateToolbar();
+  renderSplitLayout();
+});
+
+window.browserAPI.onTabSwitched((tabId) => {
+  activeTabId = tabId;
+  splitState.focusedTabId = tabId;
+  renderSidebarTabs();
+  updateToolbar();
+  renderSplitLayout();
+});
+
+window.browserAPI.onSplitStateChanged((state) => {
+  splitState = state;
+  renderSidebarTabs();
+  updateToolbar();
+  renderSplitLayout();
+});
+
+window.browserAPI.onPaneFocused((tabId) => {
+  splitState.focusedTabId = tabId;
+  renderSidebarTabs();
+  updateToolbar();
+  renderSplitLayout();
+});
+
+window.browserAPI.onPageCrash(({ tabId, reason }) => {
+  const tab = tabs.find((t) => t.id === tabId);
+  if (tab) {
+    tab.isCrashed = true;
+    updateToolbar();
+  }
+});
+
+// Initial layout calculation
+setTimeout(sendLayoutBounds, 100);

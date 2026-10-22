@@ -16,7 +16,7 @@ body {
   user-select: none;
 }
 
-/* App Container: Left Sidebar + Right Main Content */
+/* App Container */
 #app-container {
   display: flex;
   width: 100vw;
@@ -34,15 +34,34 @@ body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  transition: width 0.2s ease, min-width 0.2s ease;
 }
 
-/* Sidebar Header with "+" New Tab button */
+#sidebar.collapsed {
+  width: 48px;
+  min-width: 48px;
+}
+
+#sidebar.collapsed .sidebar-title,
+#sidebar.collapsed .tab-title,
+#sidebar.collapsed .tab-close-btn,
+#sidebar.collapsed .tab-split-badge {
+  display: none;
+}
+
+#sidebar.collapsed .tab-item {
+  justify-content: center;
+  padding: 8px 0;
+}
+
+/* Sidebar Header */
 .sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-bottom: 1px solid #1f1f23;
+  gap: 4px;
 }
 
 .sidebar-title {
@@ -51,9 +70,11 @@ body {
   letter-spacing: 0.05em;
   font-weight: 600;
   color: #71717a;
+  flex: 1;
+  margin-left: 6px;
 }
 
-.new-tab-btn {
+.sidebar-icon-btn {
   background: transparent;
   border: 1px solid #27272a;
   color: #a1a1aa;
@@ -66,13 +87,13 @@ body {
   transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.new-tab-btn:hover {
+.sidebar-icon-btn:hover {
   background-color: #27272a;
   color: #fafafa;
   border-color: #3f3f46;
 }
 
-/* Vertical Tab List */
+/* Tab List */
 .tab-list {
   flex: 1;
   overflow-y: auto;
@@ -83,7 +104,6 @@ body {
   gap: 3px;
 }
 
-/* Scrollbar styling for tab list */
 .tab-list::-webkit-scrollbar {
   width: 5px;
 }
@@ -92,7 +112,7 @@ body {
   border-radius: 3px;
 }
 
-/* Single Vertical Tab Item */
+/* Tab Item */
 .tab-item {
   display: flex;
   align-items: center;
@@ -105,6 +125,7 @@ body {
   font-size: 13px;
   transition: background-color 0.15s ease, color 0.15s ease;
   border-left: 3px solid transparent;
+  position: relative;
 }
 
 .tab-item:hover {
@@ -112,7 +133,6 @@ body {
   color: #f4f4f5;
 }
 
-/* Active tab highlight */
 .tab-item.active {
   background-color: #222226;
   color: #ffffff;
@@ -120,7 +140,6 @@ body {
   font-weight: 500;
 }
 
-/* Tab Favicon */
 .tab-favicon {
   width: 16px;
   height: 16px;
@@ -138,7 +157,6 @@ body {
   border-radius: 2px;
 }
 
-/* Tab Title */
 .tab-title {
   flex: 1;
   overflow: hidden;
@@ -146,7 +164,20 @@ body {
   white-space: nowrap;
 }
 
-/* Close (x) Button */
+/* Split View Indicator Badge in Sidebar */
+.tab-split-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background-color: #3b82f6;
+  color: #ffffff;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
 .tab-close-btn {
   background: transparent;
   border: none;
@@ -161,11 +192,10 @@ body {
   font-size: 14px;
   line-height: 1;
   opacity: 0;
-  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
   flex-shrink: 0;
 }
 
-/* Reveal close button on tab hover or when active */
 .tab-item:hover .tab-close-btn,
 .tab-item.active .tab-close-btn {
   opacity: 1;
@@ -176,13 +206,14 @@ body {
   color: #ffffff;
 }
 
-/* Main Content Area */
+/* Main Content */
 #main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  position: relative;
 }
 
 /* Navigation Toolbar */
@@ -194,9 +225,11 @@ body {
   gap: 8px;
   padding: 8px 12px;
   flex-shrink: 0;
+  height: 48px;
 }
 
-.nav-controls {
+.nav-controls,
+.split-controls {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -229,7 +262,20 @@ body {
   cursor: not-allowed;
 }
 
-/* URL Input and Form */
+.nav-btn.active {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
+.split-active-only {
+  display: none;
+}
+
+body.in-split-mode .split-active-only {
+  display: flex;
+}
+
+/* Address Bar */
 #url-form {
   display: flex;
   align-items: center;
@@ -290,24 +336,265 @@ body {
   border-color: #3b82f6;
 }
 
-/* Webview Container & Webviews */
-#webview-container {
+/* Crash Banner */
+.crash-banner {
+  background-color: #b91c1c;
+  color: #ffffff;
+  padding: 6px 14px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.crash-reload-btn {
+  background-color: #ffffff;
+  color: #b91c1c;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* View Area */
+#view-area {
   flex: 1;
   position: relative;
   width: 100%;
-  height: 100%;
-  background-color: #ffffff;
+  height: calc(100vh - 48px);
+  background-color: #121214;
   overflow: hidden;
 }
 
-.tab-webview {
+#view-mount-single {
   width: 100%;
   height: 100%;
-  border: none;
-  display: none;
 }
 
-/* Show only the active tab's webview */
-.tab-webview.active {
+/* Split View Container */
+#split-container {
   display: flex;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.split-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  background-color: #18181b;
+  overflow: hidden;
+  outline: 2px solid #27272a;
+  outline-offset: -2px;
+  transition: outline-color 0.15s ease;
+}
+
+/* Highlight focused pane */
+.split-pane.focused {
+  outline-color: #3b82f6;
+}
+
+.pane-header {
+  height: 28px;
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  background-color: #18181b;
+  border-bottom: 1px solid #27272a;
+  cursor: pointer;
+}
+
+.split-pane.focused .pane-header {
+  background-color: #1e2433;
+  border-bottom-color: #3b82f6;
+}
+
+.pane-header-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.pane-favicon {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+}
+
+.pane-favicon img {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
+.pane-title {
+  font-size: 11px;
+  color: #f4f4f5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane-status-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background-color: #27272a;
+  color: #a1a1aa;
+}
+
+.split-pane.focused .pane-status-badge {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
+.pane-view-mount {
+  flex: 1;
+  width: 100%;
+  height: calc(100% - 28px);
+}
+
+/* Draggable Divider */
+.split-divider {
+  width: 8px;
+  min-width: 8px;
+  height: 100%;
+  background-color: #121214;
+  border-left: 1px solid #27272a;
+  border-right: 1px solid #27272a;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  transition: background-color 0.15s ease;
+}
+
+.split-divider:hover,
+body.resizing .split-divider {
+  background-color: #3b82f6;
+}
+
+.divider-grip {
+  width: 2px;
+  height: 24px;
+  background-color: #52525b;
+  border-radius: 1px;
+}
+
+/* Tab Picker Overlay (Right pane) */
+.tab-picker {
+  position: absolute;
+  top: 28px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #121214;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  padding: 16px;
+}
+
+.picker-card {
+  background-color: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 20px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+.picker-card h3 {
+  font-size: 15px;
+  margin-bottom: 6px;
+  color: #f4f4f5;
+}
+
+.picker-card p {
+  font-size: 12px;
+  color: #a1a1aa;
+  margin-bottom: 14px;
+}
+
+.picker-tab-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+
+.picker-tab-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background-color: #222226;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.picker-tab-item:hover {
+  background-color: #2b2b32;
+  border-color: #3b82f6;
+}
+
+.picker-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.picker-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+}
+
+.picker-btn.primary {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
+.picker-btn.primary:hover {
+  background-color: #2563eb;
+}
+
+.picker-btn.secondary {
+  background-color: #27272a;
+  color: #fafafa;
+}
+
+.picker-btn.secondary:hover {
+  background-color: #3f3f46;
+}
+
+/* Helper Utilities */
+.hidden {
+  display: none !important;
+}
+
+body.resizing {
+  cursor: col-resize !important;
+  user-select: none;
 }
