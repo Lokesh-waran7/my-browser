@@ -131,8 +131,6 @@ class YouTubeAdHandler {
           observer.observe(player, {
             attributes: true,
             attributeFilter: ['class'],
-            childList: true,
-            subtree: true,
           });
           checkAndHandleAd('player-attached');
         } else {

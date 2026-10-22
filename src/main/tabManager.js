@@ -1,4 +1,4 @@
-// Tab Manager - Manages WebContentsView instances, lifecycle, and security
+// Tab Manager - Manages WebContentsView instances, lifecycle, security, and view creation
 const { WebContentsView } = require('electron');
 const privacyManager = require('./privacyManager');
 const youtubeAdHandler = require('./youtubeAdHandler');
@@ -10,6 +10,9 @@ class TabManager {
     this.tabCounter = 0;
     this.activeTabId = null;
 
+    // Injected reference for suspension coordination
+    this.tabSuspender = null;
+
     // Callback hooks for main process & IPC notifications
     this.onTabCreated = null;
     this.onTabClosed = null;
@@ -20,11 +23,10 @@ class TabManager {
   }
 
   /**
-   * Creates a new tab backed by a WebContentsView.
-   * If isLazy is true, URL navigation is postponed until the tab is first viewed.
+   * Recreates or sets up WebContentsView for a tab with strict security settings and event hooks.
    */
-  createTab(initialUrl = 'https://duckduckgo.com', activate = true, isLazy = false) {
-    const tabId = `tab-${++this.tabCounter}`;
+  setupTabView(tab, urlToLoad = null) {
+    const tabId = tab.id;
 
     // Security: strict isolation for all web contents
     const view = new WebContentsView({
@@ -35,21 +37,9 @@ class TabManager {
       },
     });
 
-    const tab = {
-      id: tabId,
-      url: initialUrl,
-      title: 'New Tab',
-      favicon: null,
-      isLoading: false,
-      canGoBack: false,
-      canGoForward: false,
-      isCrashed: false,
-      isLazy: !!isLazy,
-      workspaceId: null,
-      view: view,
-    };
-
-    this.tabs.set(tabId, tab);
+    tab.view = view;
+    tab.lastActiveTime = Date.now();
+    tab.isSuspended = false;
 
     const wc = view.webContents;
 
@@ -73,6 +63,7 @@ class TabManager {
 
     const handleNav = (event, url) => {
       tab.url = url;
+      tab.lastActiveTime = Date.now();
       const currentTitle = wc.getTitle();
       if (currentTitle) {
         tab.title = currentTitle;
@@ -82,6 +73,7 @@ class TabManager {
       if (this.onTabUpdated) this.onTabUpdated(tab);
       triggerYouTubeHandler(url);
     };
+
     wc.on('did-navigate', handleNav);
     wc.on('did-navigate-in-page', (event, url) => {
       handleNav(event, url);
@@ -93,7 +85,7 @@ class TabManager {
       triggerYouTubeHandler(wc.getURL());
     });
 
-    // Main process error logging
+    // Error logging
     wc.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
       console.log(`[did-fail-load] Tab: ${tabId}, Code: ${errorCode}, Description: ${errorDescription}, URL: ${validatedURL}, MainFrame: ${isMainFrame}`);
     });
@@ -112,12 +104,13 @@ class TabManager {
       }
     });
 
-    // Detect click/focus inside the WebContentsView to highlight focused pane
+    // Focus synchronization
     wc.on('focus', () => {
+      tab.lastActiveTime = Date.now();
       if (this.onViewFocus) this.onViewFocus(tabId);
     });
 
-    // Edge case: handle window.open / target="_blank" links (open as a new tab)
+    // Target="_blank" / window.open
     wc.setWindowOpenHandler(({ url }) => {
       if (this.onNewWindow) {
         this.onNewWindow(url);
@@ -127,18 +120,50 @@ class TabManager {
       return { action: 'deny' };
     });
 
-    // Edge case: handle web page render crashes gracefully
+    // Page crashes
     wc.on('render-process-gone', (event, details) => {
-      console.log(`[render-process-gone] Tab: ${tabId}, Reason: ${details ? details.reason : 'unknown'}, ExitCode: ${details ? details.exitCode : 'unknown'}`);
+      console.log(`[render-process-gone] Tab: ${tabId}, Reason: ${details ? details.reason : 'unknown'}`);
       tab.isCrashed = true;
       tab.title = 'Page Crashed';
       if (this.onTabCrash) this.onTabCrash(tab, details);
       if (this.onTabUpdated) this.onTabUpdated(tab);
     });
 
-    // Load target URL immediately if not lazy
-    if (!isLazy) {
-      wc.loadURL(initialUrl).catch(() => {});
+    if (urlToLoad) {
+      wc.loadURL(urlToLoad).catch(() => {});
+    }
+
+    return view;
+  }
+
+  /**
+   * Creates a new tab. If isSuspended is true, the tab is initialized without a WebContentsView.
+   */
+  createTab(initialUrl = 'https://duckduckgo.com', activate = true, isLazy = false, isSuspended = false) {
+    const tabId = `tab-${++this.tabCounter}`;
+
+    const tab = {
+      id: tabId,
+      url: initialUrl,
+      title: 'New Tab',
+      favicon: null,
+      isLoading: false,
+      canGoBack: false,
+      canGoForward: false,
+      isCrashed: false,
+      isLazy: !!isLazy,
+      isSuspended: !!isSuspended,
+      suspendedAt: isSuspended ? Date.now() : null,
+      scrollPosition: { x: 0, y: 0 },
+      lastActiveTime: Date.now(),
+      workspaceId: null,
+      view: null,
+    };
+
+    this.tabs.set(tabId, tab);
+
+    if (!isSuspended) {
+      this.setupTabView(tab, isLazy ? null : initialUrl);
     }
 
     if (this.onTabCreated) {
@@ -162,6 +187,8 @@ class TabManager {
       canGoBack: t.canGoBack,
       canGoForward: t.canGoForward,
       isCrashed: t.isCrashed,
+      isSuspended: !!t.isSuspended,
+      scrollPosition: t.scrollPosition || { x: 0, y: 0 },
       workspaceId: t.workspaceId,
     }));
   }
@@ -170,15 +197,16 @@ class TabManager {
     const tab = this.tabs.get(tabId);
     if (!tab) return false;
 
-    // Detach view from main window if attached
-    try {
-      this.mainWindow.contentView.removeChildView(tab.view);
-    } catch (e) {}
+    // Detach and clean up view if active
+    if (tab.view) {
+      try {
+        this.mainWindow.contentView.removeChildView(tab.view);
+      } catch (e) {}
 
-    // Clean up web contents
-    try {
-      tab.view.webContents.close();
-    } catch (e) {}
+      try {
+        tab.view.webContents.close();
+      } catch (e) {}
+    }
 
     this.tabs.delete(tabId);
 
@@ -191,31 +219,50 @@ class TabManager {
 
   navigate(tabId, url) {
     const tab = this.tabs.get(tabId);
-    if (tab) {
-      tab.isCrashed = false;
-      tab.isLazy = false;
+    if (!tab) return;
+
+    if (tab.isSuspended && this.tabSuspender) {
+      tab.url = url;
+      this.tabSuspender.unsuspendTab(tabId);
+      return;
+    }
+
+    tab.isCrashed = false;
+    tab.isLazy = false;
+    tab.lastActiveTime = Date.now();
+    if (tab.view && tab.view.webContents) {
       tab.view.webContents.loadURL(url).catch(() => {});
     }
   }
 
   goBack(tabId) {
     const tab = this.tabs.get(tabId);
-    if (tab && tab.view.webContents.canGoBack()) {
+    if (tab && tab.view && tab.view.webContents && tab.view.webContents.canGoBack()) {
+      tab.lastActiveTime = Date.now();
       tab.view.webContents.goBack();
     }
   }
 
   goForward(tabId) {
     const tab = this.tabs.get(tabId);
-    if (tab && tab.view.webContents.canGoForward()) {
+    if (tab && tab.view && tab.view.webContents && tab.view.webContents.canGoForward()) {
+      tab.lastActiveTime = Date.now();
       tab.view.webContents.goForward();
     }
   }
 
   reload(tabId) {
     const tab = this.tabs.get(tabId);
-    if (tab) {
-      tab.isCrashed = false;
+    if (!tab) return;
+
+    if (tab.isSuspended && this.tabSuspender) {
+      this.tabSuspender.unsuspendTab(tabId);
+      return;
+    }
+
+    tab.isCrashed = false;
+    tab.lastActiveTime = Date.now();
+    if (tab.view && tab.view.webContents) {
       if (tab.isLazy) {
         tab.isLazy = false;
         tab.view.webContents.loadURL(tab.url).catch(() => {});
@@ -227,14 +274,11 @@ class TabManager {
 
   stop(tabId) {
     const tab = this.tabs.get(tabId);
-    if (tab) {
+    if (tab && tab.view && tab.view.webContents) {
       tab.view.webContents.stop();
     }
   }
 
-  /**
-   * Opens DevTools in detached mode for active or specified tab's WebContentsView.
-   */
   openDevTools(tabId) {
     const tab = this.tabs.get(tabId) || this.tabs.get(this.activeTabId);
     if (tab && tab.view && tab.view.webContents) {

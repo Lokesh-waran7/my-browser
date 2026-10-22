@@ -155,10 +155,12 @@ class SplitManager {
     // If an HTML overlay/modal is open, hide all WebContentsViews so the modal is fully visible
     if (this.isOverlayOpen) {
       allTabs.forEach((tab) => {
-        tab.view.setVisible(false);
-        try {
-          contentView.removeChildView(tab.view);
-        } catch (e) {}
+        if (tab.view) {
+          tab.view.setVisible(false);
+          try {
+            contentView.removeChildView(tab.view);
+          } catch (e) {}
+        }
       });
       return;
     }
@@ -169,23 +171,30 @@ class SplitManager {
 
       allTabs.forEach((tab) => {
         if (tab.id === activeTabId) {
-          if (!contentView.children.includes(tab.view)) {
-            contentView.addChildView(tab.view);
+          if (tab.isSuspended && this.tabSuspender) {
+            this.tabSuspender.unsuspendTab(tab.id);
           }
-          tab.view.setVisible(true);
+          if (tab.view) {
+            if (!contentView.children.includes(tab.view)) {
+              contentView.addChildView(tab.view);
+            }
+            tab.view.setVisible(true);
 
-          const b = this.layoutBounds.viewArea;
-          tab.view.setBounds({
-            x: Math.round(b.x),
-            y: Math.round(b.y),
-            width: Math.max(0, Math.round(b.width)),
-            height: Math.max(0, Math.round(b.height)),
-          });
+            const b = this.layoutBounds.viewArea;
+            tab.view.setBounds({
+              x: Math.round(b.x),
+              y: Math.round(b.y),
+              width: Math.max(0, Math.round(b.width)),
+              height: Math.max(0, Math.round(b.height)),
+            });
+          }
         } else {
-          tab.view.setVisible(false);
-          try {
-            contentView.removeChildView(tab.view);
-          } catch (e) {}
+          if (tab.view) {
+            tab.view.setVisible(false);
+            try {
+              contentView.removeChildView(tab.view);
+            } catch (e) {}
+          }
         }
       });
     } else {
@@ -196,44 +205,56 @@ class SplitManager {
       // Hide all non-split tabs
       allTabs.forEach((tab) => {
         if (tab.id !== this.leftTabId && tab.id !== this.rightTabId) {
-          tab.view.setVisible(false);
-          try {
-            contentView.removeChildView(tab.view);
-          } catch (e) {}
+          if (tab.view) {
+            tab.view.setVisible(false);
+            try {
+              contentView.removeChildView(tab.view);
+            } catch (e) {}
+          }
         }
       });
 
       // Left pane view
       if (leftTab) {
-        if (!contentView.children.includes(leftTab.view)) {
-          contentView.addChildView(leftTab.view);
+        if (leftTab.isSuspended && this.tabSuspender) {
+          this.tabSuspender.unsuspendTab(leftTab.id);
         }
-        leftTab.view.setVisible(true);
+        if (leftTab.view) {
+          if (!contentView.children.includes(leftTab.view)) {
+            contentView.addChildView(leftTab.view);
+          }
+          leftTab.view.setVisible(true);
 
-        const lb = this.layoutBounds.leftPane;
-        leftTab.view.setBounds({
-          x: Math.round(lb.x),
-          y: Math.round(lb.y),
-          width: Math.max(0, Math.round(lb.width)),
-          height: Math.max(0, Math.round(lb.height)),
-        });
+          const lb = this.layoutBounds.leftPane;
+          leftTab.view.setBounds({
+            x: Math.round(lb.x),
+            y: Math.round(lb.y),
+            width: Math.max(0, Math.round(lb.width)),
+            height: Math.max(0, Math.round(lb.height)),
+          });
+        }
       }
 
       // Right pane view (only if picked; otherwise DOM picker stays visible)
       if (rightTab && !this.isPickingRight) {
-        if (!contentView.children.includes(rightTab.view)) {
-          contentView.addChildView(rightTab.view);
+        if (rightTab.isSuspended && this.tabSuspender) {
+          this.tabSuspender.unsuspendTab(rightTab.id);
         }
-        rightTab.view.setVisible(true);
+        if (rightTab.view) {
+          if (!contentView.children.includes(rightTab.view)) {
+            contentView.addChildView(rightTab.view);
+          }
+          rightTab.view.setVisible(true);
 
-        const rb = this.layoutBounds.rightPane;
-        rightTab.view.setBounds({
-          x: Math.round(rb.x),
-          y: Math.round(rb.y),
-          width: Math.max(0, Math.round(rb.width)),
-          height: Math.max(0, Math.round(rb.height)),
-        });
-      } else if (rightTab) {
+          const rb = this.layoutBounds.rightPane;
+          rightTab.view.setBounds({
+            x: Math.round(rb.x),
+            y: Math.round(rb.y),
+            width: Math.max(0, Math.round(rb.width)),
+            height: Math.max(0, Math.round(rb.height)),
+          });
+        }
+      } else if (rightTab && rightTab.view) {
         rightTab.view.setVisible(false);
         try {
           contentView.removeChildView(rightTab.view);

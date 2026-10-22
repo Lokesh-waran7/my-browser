@@ -89,10 +89,12 @@ class WorkspaceManager {
           (ws.splitState && (savedTab.id === ws.splitState.leftTabId || savedTab.id === ws.splitState.rightTabId))
         );
 
+        const isSuspended = !shouldLoadNow || !!savedTab.isSuspended;
         const tab = this.tabManager.createTab(
           savedTab.url || 'https://duckduckgo.com',
           shouldLoadNow,
-          !shouldLoadNow // isLazy = true if not loaded now
+          !shouldLoadNow,
+          isSuspended
         );
 
         // Preserve metadata
@@ -101,6 +103,8 @@ class WorkspaceManager {
         tab.title = savedTab.title || 'New Tab';
         tab.favicon = savedTab.favicon || null;
         tab.isLazy = !shouldLoadNow;
+        tab.isSuspended = isSuspended;
+        tab.scrollPosition = savedTab.scrollPosition || { x: 0, y: 0 };
 
         this.tabManager.tabs.set(tab.id, tab);
         validTabIds.push(tab.id);
@@ -183,13 +187,22 @@ class WorkspaceManager {
   }
 
   /**
-   * Awakens a lazily created tab by loading its URL when selected.
+   * Awakens a lazily created or suspended tab by restoring its view and loading its URL.
    */
   awakenTabIfNeeded(tabId) {
     const tab = this.tabManager.getTab(tabId);
-    if (tab && tab.isLazy) {
+    if (!tab) return;
+    if (tab.isSuspended) {
+      if (this.tabSuspender) {
+        this.tabSuspender.unsuspendTab(tabId);
+      } else {
+        this.tabManager.setupTabView(tab, tab.url);
+      }
+    } else if (tab.isLazy) {
       tab.isLazy = false;
-      tab.view.webContents.loadURL(tab.url).catch(() => {});
+      if (tab.view && tab.view.webContents) {
+        tab.view.webContents.loadURL(tab.url).catch(() => {});
+      }
     }
   }
 
@@ -427,6 +440,8 @@ class WorkspaceManager {
                 url: t.url,
                 title: t.title,
                 favicon: t.favicon,
+                isSuspended: !!t.isSuspended,
+                scrollPosition: t.scrollPosition || { x: 0, y: 0 },
               })),
           };
         }),

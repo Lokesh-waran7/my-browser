@@ -99,6 +99,21 @@
               <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
           </button>
+          <button id="btn-memory-dashboard" class="nav-btn" title="Memory & Tab Suspension Dashboard (browser://memory)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="6" width="20" height="12" rx="2"></rect>
+              <line x1="6" y1="12" x2="10" y2="12"></line>
+              <line x1="14" y1="12" x2="18" y2="12"></line>
+              <line x1="6" y1="3" x2="6" y2="6"></line>
+              <line x1="10" y1="3" x2="10" y2="6"></line>
+              <line x1="14" y1="3" x2="14" y2="6"></line>
+              <line x1="18" y1="3" x2="18" y2="6"></line>
+              <line x1="6" y1="18" x2="6" y2="21"></line>
+              <line x1="10" y1="18" x2="10" y2="21"></line>
+              <line x1="14" y1="18" x2="14" y2="21"></line>
+              <line x1="18" y1="18" x2="18" y2="21"></line>
+            </svg>
+          </button>
         </div>
       </nav>
 
@@ -241,8 +256,96 @@
     <div class="context-menu-header">Move to Workspace:</div>
     <div id="tab-ctx-ws-list" class="context-submenu-list"></div>
     <div class="context-menu-divider"></div>
+    <div class="context-menu-item" id="tab-ctx-suspend-now">
+      <span>💤 Suspend this tab now</span>
+    </div>
+    <div class="context-menu-item" id="tab-ctx-suspend-others">
+      <span>💤 Suspend other tabs</span>
+    </div>
+    <div class="context-menu-item" id="tab-ctx-toggle-whitelist">
+      <span id="tab-ctx-whitelist-text">⭐ Never suspend this site</span>
+    </div>
+    <div class="context-menu-divider"></div>
     <div class="context-menu-item danger" id="tab-ctx-close">
       <span>✕ Close Tab</span>
+    </div>
+  </div>
+
+  <!-- Memory & Tab Suspension Dashboard Modal -->
+  <div id="memory-modal" class="modal-backdrop hidden">
+    <div class="modal-card memory-card">
+      <div class="memory-header">
+        <div class="memory-header-title">
+          <span class="memory-header-icon">🧠</span>
+          <h3>Memory & Tab Suspension Dashboard</h3>
+        </div>
+        <button id="btn-close-memory" class="modal-close-icon" title="Close">✕</button>
+      </div>
+
+      <div class="memory-grid">
+        <div class="memory-stat-card">
+          <span class="stat-label">Total App RAM</span>
+          <span class="stat-value" id="mem-app-total">-- MB</span>
+        </div>
+        <div class="memory-stat-card highlight">
+          <span class="stat-label">Estimated RAM Saved</span>
+          <span class="stat-value text-green" id="mem-ram-saved">~0 MB</span>
+        </div>
+        <div class="memory-stat-card">
+          <span class="stat-label">Active / Suspended</span>
+          <span class="stat-value" id="mem-tab-counts">0 / 0</span>
+        </div>
+        <div class="memory-stat-card">
+          <span class="stat-label">System Free RAM</span>
+          <span class="stat-value" id="mem-system-free">-- GB</span>
+        </div>
+      </div>
+
+      <!-- Settings Section -->
+      <div class="memory-section">
+        <h4>Suspension Settings</h4>
+        <div class="settings-row">
+          <label class="checkbox-label">
+            <input type="checkbox" id="suspender-enabled-toggle" checked />
+            <span>Enable background tab auto-suspension</span>
+          </label>
+        </div>
+        <div class="settings-row flex-row">
+          <label for="suspender-idle-input">Idle timeout before suspension:</label>
+          <select id="suspender-idle-input" class="modal-select small">
+            <option value="5">5 minutes</option>
+            <option value="10" selected>10 minutes (Default)</option>
+            <option value="15">15 minutes</option>
+            <option value="30">30 minutes</option>
+            <option value="60">1 hour</option>
+          </select>
+        </div>
+        <div class="settings-actions">
+          <button id="btn-suspend-all-background" class="modal-btn secondary">💤 Suspend All Background Tabs Now</button>
+        </div>
+      </div>
+
+      <!-- Tab Memory Breakdown -->
+      <div class="memory-section">
+        <h4>Tab Memory Breakdown</h4>
+        <div class="memory-table-wrapper">
+          <table class="memory-table">
+            <thead>
+              <tr>
+                <th>Tab Title</th>
+                <th>Status</th>
+                <th>Idle</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="memory-tab-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="btn-done-memory" class="modal-btn primary">Close</button>
+      </div>
     </div>
   </div>
 

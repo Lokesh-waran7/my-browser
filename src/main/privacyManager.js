@@ -1,6 +1,8 @@
 // Privacy Manager - Ghostery AdBlocker Engine with cosmetic filtering, scriptlet injection,
-// uBlock Origin filter list refreshing, tracking parameter stripping, HTTPS upgrade, and cookie controls.
-const { session } = require('electron');
+// disk cache persistence, uBlock Origin filter list refreshing, tracking parameter stripping, HTTPS upgrade, and cookie controls.
+const fs = require('fs');
+const path = require('path');
+const { app, session } = require('electron');
 const { ElectronBlocker } = require('@ghostery/adblocker-electron');
 
 class PrivacyManager {
@@ -44,6 +46,9 @@ class PrivacyManager {
 
     // Per-site allowlist (user-configured sites where ad blocking is disabled)
     this.allowlist = new Set();
+
+    // Disk cache location for instant startup
+    this.cachePath = path.join(app.getPath('userData'), 'adblocker-engine.bin');
   }
 
   /**
@@ -54,12 +59,25 @@ class PrivacyManager {
     if (!targetSession) return;
 
     try {
-      console.log('[PrivacyManager] Initializing Ghostery full prebuilt engine...');
-      // 1. Initialize complete Ghostery engine (ads, tracking, annoyances, scriptlets, cosmetic filters)
-      this.blocker = await ElectronBlocker.fromPrebuiltFull(fetch);
-      console.log('[PrivacyManager] Ghostery engine loaded successfully.');
+      // 1. Initialize blocker engine from disk cache if present, otherwise fetch prebuilt
+      if (fs.existsSync(this.cachePath)) {
+        try {
+          const buffer = fs.readFileSync(this.cachePath);
+          this.blocker = ElectronBlocker.deserialize(buffer);
+          console.log('[PrivacyManager] Blocker engine loaded from disk cache (~20ms).');
+        } catch (cacheErr) {
+          console.warn('[PrivacyManager] Cache read failed, fetching fresh engine:', cacheErr.message);
+          this.blocker = await ElectronBlocker.fromPrebuiltFull(fetch);
+          fs.writeFile(this.cachePath, Buffer.from(this.blocker.serialize()), () => {});
+        }
+      } else {
+        console.log('[PrivacyManager] Initializing fresh Ghostery full prebuilt engine...');
+        this.blocker = await ElectronBlocker.fromPrebuiltFull(fetch);
+        fs.writeFile(this.cachePath, Buffer.from(this.blocker.serialize()), () => {});
+        console.log('[PrivacyManager] Ghostery engine loaded and cached to disk.');
+      }
 
-      // 2. Set up logging & telemetry listeners
+      // 2. Set up lightweight in-memory telemetry (avoid heavy per-request console.log)
       this.blocker.on('request-blocked', (req) => {
         this.totalBlockedCount++;
         const isYouTube = req.url.includes('youtube.com') ||
@@ -68,29 +86,12 @@ class PrivacyManager {
                           req.url.includes('googleads');
         if (isYouTube) {
           this.youtubeBlockedCount++;
-          console.log(`[YOUTUBE-AD-BLOCKED] URL: ${req.url}, Type: ${req.type} (Total YT Blocked: ${this.youtubeBlockedCount})`);
-        } else {
-          console.log(`[AD-BLOCKER-BLOCKED] URL: ${req.url}, Type: ${req.type} (Total: ${this.totalBlockedCount})`);
         }
       });
 
-      this.blocker.on('request-redirected', (req) => {
-        console.log(`[AD-TRACKER-REDIRECTED] URL: ${req.url}, Type: ${req.type}`);
-      });
-
-      this.blocker.on('script-injected', (script, url) => {
-        this.scriptsInjectedCount++;
-        if (url.includes('youtube.com')) {
-          console.log(`[YOUTUBE-SCRIPTLET-INJECTED] URL: ${url}, script len: ${script.length}`);
-        }
-      });
-
-      this.blocker.on('style-injected', (style, url) => {
-        this.stylesInjectedCount++;
-        if (url.includes('youtube.com')) {
-          console.log(`[YOUTUBE-STYLE-INJECTED] URL: ${url}, style len: ${style.length}`);
-        }
-      });
+      this.blocker.on('request-redirected', () => {});
+      this.blocker.on('script-injected', () => { this.scriptsInjectedCount++; });
+      this.blocker.on('style-injected', () => { this.stylesInjectedCount++; });
 
       // 3. Refresh & merge uBlock Origin YouTube filters and quick-fixes
       this.refreshUblockFilters().catch((err) => {
@@ -219,6 +220,7 @@ class PrivacyManager {
     if (addedRules.length > 0) {
       this.blocker.updateFromDiff({ added: addedRules });
       console.log(`[PrivacyManager] Applied ${addedRules.length} updated uBlock Origin filter rules.`);
+      fs.writeFile(this.cachePath, Buffer.from(this.blocker.serialize()), () => {});
     }
   }
 

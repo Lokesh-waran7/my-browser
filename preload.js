@@ -39,6 +39,16 @@ contextBridge.exposeInMainWorld('browserAPI', {
   removeAllowlist: (domain) => ipcRenderer.invoke('privacy:removeAllowlist', domain),
   isDomainAllowed: (domain) => ipcRenderer.invoke('privacy:isDomainAllowed', domain),
 
+  // Tab Suspension & Memory Dashboard
+  getSuspenderSettings: () => ipcRenderer.invoke('suspender:getSettings'),
+  updateSuspenderSettings: (options) => ipcRenderer.invoke('suspender:updateSettings', options),
+  suspendTab: (tabId) => ipcRenderer.invoke('suspender:suspendTab', tabId),
+  suspendOtherTabs: (keepTabId) => ipcRenderer.invoke('suspender:suspendOthers', keepTabId),
+  unsuspendTab: (tabId) => ipcRenderer.invoke('suspender:unsuspendTab', tabId),
+  addSuspenderWhitelist: (domain) => ipcRenderer.invoke('suspender:addWhitelist', domain),
+  removeSuspenderWhitelist: (domain) => ipcRenderer.invoke('suspender:removeWhitelist', domain),
+  getMemoryStats: () => ipcRenderer.invoke('memory:getStats'),
+
   // Event Subscriptions
   onTabCreated: (callback) => {
     ipcRenderer.on('tab:created', (e, data) => callback(data));

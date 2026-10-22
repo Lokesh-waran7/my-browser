@@ -1,7 +1,7 @@
 // IPC Handlers - Bridges UI renderer commands with main process managers
 const { ipcMain } = require('electron');
 
-function setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager, privacyManager) {
+function setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager, privacyManager, tabSuspender) {
   // Tab Management
   ipcMain.handle('tab:create', (event, url, activate) => {
     const tab = tabManager.createTab(url, activate !== false);
@@ -26,6 +26,10 @@ function setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager
   });
 
   ipcMain.handle('tab:switch', (event, tabId) => {
+    if (tabSuspender) {
+      tabSuspender.unsuspendTab(tabId);
+    }
+
     if (workspaceManager) {
       workspaceManager.awakenTabIfNeeded(tabId);
       const activeWs = workspaceManager.getActiveWorkspace();
@@ -196,6 +200,43 @@ function setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager
 
   ipcMain.handle('privacy:isDomainAllowed', (event, domain) => {
     return privacyManager ? privacyManager.isDomainAllowed(domain) : false;
+  });
+
+  // Tab Suspension Controls
+  ipcMain.handle('suspender:getSettings', () => {
+    return tabSuspender ? tabSuspender.getSettings() : null;
+  });
+
+  ipcMain.handle('suspender:updateSettings', (event, options) => {
+    return tabSuspender ? tabSuspender.updateSettings(options) : null;
+  });
+
+  ipcMain.handle('suspender:suspendTab', async (event, tabId) => {
+    return tabSuspender ? await tabSuspender.suspendTab(tabId, true) : false;
+  });
+
+  ipcMain.handle('suspender:suspendOthers', async (event, keepTabId) => {
+    return tabSuspender ? await tabSuspender.suspendOtherTabs(keepTabId) : 0;
+  });
+
+  ipcMain.handle('suspender:unsuspendTab', (event, tabId) => {
+    if (tabSuspender) tabSuspender.unsuspendTab(tabId);
+    return true;
+  });
+
+  ipcMain.handle('suspender:addWhitelist', (event, domain) => {
+    if (tabSuspender) tabSuspender.addWhitelist(domain);
+    return true;
+  });
+
+  ipcMain.handle('suspender:removeWhitelist', (event, domain) => {
+    if (tabSuspender) tabSuspender.removeWhitelist(domain);
+    return true;
+  });
+
+  // Memory Dashboard
+  ipcMain.handle('memory:getStats', () => {
+    return tabSuspender ? tabSuspender.getMemoryStats() : null;
   });
 }
 

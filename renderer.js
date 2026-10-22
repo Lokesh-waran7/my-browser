@@ -67,7 +67,26 @@ const ctxWsDelete = document.getElementById('ctx-ws-delete');
 
 const tabContextMenu = document.getElementById('tab-context-menu');
 const tabCtxWsList = document.getElementById('tab-ctx-ws-list');
+const tabCtxSuspendNow = document.getElementById('tab-ctx-suspend-now');
+const tabCtxSuspendOthers = document.getElementById('tab-ctx-suspend-others');
+const tabCtxToggleWhitelist = document.getElementById('tab-ctx-toggle-whitelist');
+const tabCtxWhitelistText = document.getElementById('tab-ctx-whitelist-text');
 const tabCtxClose = document.getElementById('tab-ctx-close');
+
+// Memory Dashboard Elements
+const btnMemoryDashboard = document.getElementById('btn-memory-dashboard');
+const memoryModal = document.getElementById('memory-modal');
+const btnCloseMemory = document.getElementById('btn-close-memory');
+const btnDoneMemory = document.getElementById('btn-done-memory');
+const memAppTotal = document.getElementById('mem-app-total');
+const memRamSaved = document.getElementById('mem-ram-saved');
+const memTabCounts = document.getElementById('mem-tab-counts');
+const memSystemFree = document.getElementById('mem-system-free');
+const suspenderEnabledToggle = document.getElementById('suspender-enabled-toggle');
+const suspenderIdleInput = document.getElementById('suspender-idle-input');
+const btnSuspendAllBackground = document.getElementById('btn-suspend-all-background');
+const memoryTabTbody = document.getElementById('memory-tab-tbody');
+let memoryRefreshInterval = null;
 
 // Application State
 let workspaces = [];
@@ -345,6 +364,16 @@ function renderSidebarTabs() {
 
     tabEl.appendChild(faviconSpan);
     tabEl.appendChild(titleSpan);
+
+    // Sleep indicator badge if tab is suspended
+    if (tab.isSuspended) {
+      tabEl.classList.add('suspended');
+      const sleepBadge = document.createElement('span');
+      sleepBadge.className = 'tab-sleep-badge';
+      sleepBadge.textContent = '💤';
+      sleepBadge.title = 'Suspended to save RAM. Click to reload.';
+      tabEl.appendChild(sleepBadge);
+    }
 
     // Split indicator badge
     if (splitState.isSplit) {
@@ -690,10 +719,56 @@ function showTabContextMenu(tabId, x, y) {
     });
   }
 
+  // Update whitelist label for tab's domain
+  try {
+    const domain = new URL(tab.url).hostname;
+    window.browserAPI.getSuspenderSettings().then((settings) => {
+      const isWhitelisted = settings && settings.whitelist && settings.whitelist.includes(domain);
+      if (tabCtxWhitelistText) {
+        tabCtxWhitelistText.textContent = isWhitelisted
+          ? `✓ Never suspend (${domain})`
+          : `⭐ Never suspend this site`;
+      }
+    });
+  } catch (err) {}
+
   tabContextMenu.style.left = `${Math.min(x, window.innerWidth - 200)}px`;
-  tabContextMenu.style.top = `${Math.min(y, window.innerHeight - 150)}px`;
+  tabContextMenu.style.top = `${Math.min(y, window.innerHeight - 200)}px`;
   showOverlay(tabContextMenu);
 }
+
+tabCtxSuspendNow.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  hideContextMenus();
+  if (targetContextTabId) {
+    await window.browserAPI.suspendTab(targetContextTabId);
+  }
+});
+
+tabCtxSuspendOthers.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  hideContextMenus();
+  if (targetContextTabId) {
+    await window.browserAPI.suspendOtherTabs(targetContextTabId);
+  }
+});
+
+tabCtxToggleWhitelist.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  hideContextMenus();
+  const tab = tabs.find((t) => t.id === targetContextTabId);
+  if (tab && tab.url) {
+    try {
+      const domain = new URL(tab.url).hostname;
+      const settings = await window.browserAPI.getSuspenderSettings();
+      if (settings && settings.whitelist && settings.whitelist.includes(domain)) {
+        await window.browserAPI.removeSuspenderWhitelist(domain);
+      } else {
+        await window.browserAPI.addSuspenderWhitelist(domain);
+      }
+    } catch (err) {}
+  }
+});
 
 tabCtxClose.addEventListener('click', (e) => {
   e.stopPropagation();
@@ -702,6 +777,141 @@ tabCtxClose.addEventListener('click', (e) => {
     window.browserAPI.closeTab(targetContextTabId);
   }
 });
+
+// Memory Dashboard Logic
+async function refreshMemoryDashboard() {
+  try {
+    const stats = await window.browserAPI.getMemoryStats();
+    if (!stats) return;
+
+    if (memAppTotal) memAppTotal.textContent = `${stats.totalAppMemoryMB} MB`;
+    if (memRamSaved) memRamSaved.textContent = `~${stats.estimatedRamSavedMB} MB`;
+    if (memTabCounts) memTabCounts.textContent = `${stats.activeTabsCount} / ${stats.suspendedTabsCount}`;
+    if (memSystemFree) memSystemFree.textContent = `${(stats.systemFreeMemoryMB / 1024).toFixed(1)} GB`;
+
+    if (stats.suspenderSettings) {
+      if (suspenderEnabledToggle) suspenderEnabledToggle.checked = !!stats.suspenderSettings.enabled;
+      if (suspenderIdleInput) suspenderIdleInput.value = String(stats.suspenderSettings.idleMinutes || 10);
+    }
+
+    if (memoryTabTbody) {
+      memoryTabTbody.innerHTML = '';
+      if (!stats.tabs || stats.tabs.length === 0) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="4" style="text-align: center; color: #71717a; padding: 12px;">No open tabs</td>';
+        memoryTabTbody.appendChild(tr);
+      } else {
+        stats.tabs.forEach((tab) => {
+          const tr = document.createElement('tr');
+          const isCurrent = tab.id === activeTabId;
+          const statusText = tab.isSuspended
+            ? '<span class="status-badge suspended">💤 Suspended</span>'
+            : isCurrent
+            ? '<span class="status-badge active">Active</span>'
+            : tab.isAudible
+            ? '<span class="status-badge playing">🔊 Playing</span>'
+            : '<span class="status-badge normal">Running</span>';
+
+          const idleText = tab.isSuspended
+            ? 'Suspended'
+            : tab.idleMinutes > 0
+            ? `${tab.idleMinutes}m ago`
+            : 'Just now';
+
+          const actionHtml = tab.isSuspended
+            ? `<button class="table-btn wake-btn" data-id="${tab.id}">Wake Up</button>`
+            : isCurrent
+            ? '<span class="text-muted">Current</span>'
+            : `<button class="table-btn sleep-btn" data-id="${tab.id}">Suspend</button>`;
+
+          const tabIcon = tab.favicon
+            ? `<img src="${tab.favicon}" class="tab-table-favicon" onerror="this.outerHTML='🌐'" />`
+            : '🌐';
+
+          tr.innerHTML = `
+            <td>
+              <div class="tab-table-cell">
+                <span class="tab-table-icon">${tabIcon}</span>
+                <span class="tab-table-title" title="${tab.title || tab.url}">${tab.title || tab.url}</span>
+              </div>
+            </td>
+            <td>${statusText}</td>
+            <td><span class="text-muted">${idleText}</span></td>
+            <td>${actionHtml}</td>
+          `;
+
+          const wakeBtn = tr.querySelector('.wake-btn');
+          if (wakeBtn) {
+            wakeBtn.addEventListener('click', async () => {
+              await window.browserAPI.unsuspendTab(tab.id);
+              await refreshMemoryDashboard();
+            });
+          }
+
+          const sleepBtn = tr.querySelector('.sleep-btn');
+          if (sleepBtn) {
+            sleepBtn.addEventListener('click', async () => {
+              await window.browserAPI.suspendTab(tab.id);
+              await refreshMemoryDashboard();
+            });
+          }
+
+          memoryTabTbody.appendChild(tr);
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Error refreshing memory dashboard:', err);
+  }
+}
+
+function openMemoryDashboard() {
+  hideContextMenus();
+  refreshMemoryDashboard();
+  showOverlay(memoryModal);
+  if (memoryRefreshInterval) clearInterval(memoryRefreshInterval);
+  memoryRefreshInterval = setInterval(refreshMemoryDashboard, 3000);
+}
+
+function closeMemoryDashboard() {
+  if (memoryRefreshInterval) {
+    clearInterval(memoryRefreshInterval);
+    memoryRefreshInterval = null;
+  }
+  hideOverlay(memoryModal);
+}
+
+if (btnMemoryDashboard) {
+  btnMemoryDashboard.addEventListener('click', openMemoryDashboard);
+}
+if (btnCloseMemory) {
+  btnCloseMemory.addEventListener('click', closeMemoryDashboard);
+}
+if (btnDoneMemory) {
+  btnDoneMemory.addEventListener('click', closeMemoryDashboard);
+}
+if (memoryModal) {
+  memoryModal.addEventListener('click', (e) => {
+    if (e.target === memoryModal) closeMemoryDashboard();
+  });
+}
+if (btnSuspendAllBackground) {
+  btnSuspendAllBackground.addEventListener('click', async () => {
+    await window.browserAPI.suspendOtherTabs(activeTabId);
+    await refreshMemoryDashboard();
+  });
+}
+if (suspenderEnabledToggle) {
+  suspenderEnabledToggle.addEventListener('change', async (e) => {
+    await window.browserAPI.updateSuspenderSettings({ enabled: e.target.checked });
+  });
+}
+if (suspenderIdleInput) {
+  suspenderIdleInput.addEventListener('change', async (e) => {
+    const mins = Math.max(1, parseInt(e.target.value, 10) || 10);
+    await window.browserAPI.updateSuspenderSettings({ idleMinutes: mins });
+  });
+}
 
 // Draggable divider implementation
 let isDraggingDivider = false;
@@ -804,6 +1014,11 @@ btnNewTab.addEventListener('click', () => {
 // Address Bar navigation
 urlForm.addEventListener('submit', (e) => {
   e.preventDefault();
+  const inputVal = urlInput.value.trim().toLowerCase();
+  if (inputVal === 'browser://memory' || inputVal === 'chrome://memory' || inputVal === 'about:memory') {
+    openMemoryDashboard();
+    return;
+  }
   const targetTab = getTargetTab();
   if (targetTab) {
     const url = normalizeUrl(urlInput.value);
@@ -880,6 +1095,7 @@ window.addEventListener('keydown', (e) => {
   else if (e.key === 'Escape') {
     closeWorkspaceModal();
     closeDeleteWorkspaceModal();
+    closeMemoryDashboard();
     hideContextMenus();
   }
   // Ctrl+Shift+I or F12: Open DevTools for active tab's WebContentsView

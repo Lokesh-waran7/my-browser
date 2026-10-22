@@ -4,6 +4,7 @@ const path = require('path');
 const TabManager = require('./src/main/tabManager');
 const SplitManager = require('./src/main/splitManager');
 const WorkspaceManager = require('./src/main/workspaceManager');
+const TabSuspender = require('./src/main/tabSuspender');
 const privacyManager = require('./src/main/privacyManager');
 const setupIpcHandlers = require('./src/main/ipcHandlers');
 
@@ -11,6 +12,7 @@ let mainWindow = null;
 let tabManager = null;
 let splitManager = null;
 let workspaceManager = null;
+let tabSuspender = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -31,6 +33,10 @@ function createWindow() {
   tabManager = new TabManager(mainWindow);
   splitManager = new SplitManager(mainWindow, tabManager);
   workspaceManager = new WorkspaceManager(mainWindow, tabManager, splitManager);
+  tabSuspender = new TabSuspender(mainWindow, tabManager, splitManager, workspaceManager);
+  tabManager.tabSuspender = tabSuspender;
+  splitManager.tabSuspender = tabSuspender;
+  workspaceManager.tabSuspender = tabSuspender;
 
   // Wire TabManager events
   tabManager.onTabCreated = (tab, activate) => {
@@ -40,6 +46,7 @@ function createWindow() {
       title: tab.title,
       favicon: tab.favicon,
       workspaceId: tab.workspaceId,
+      isSuspended: !!tab.isSuspended,
       activate,
     });
 
@@ -69,6 +76,7 @@ function createWindow() {
       canGoBack: tab.canGoBack,
       canGoForward: tab.canGoForward,
       isCrashed: tab.isCrashed,
+      isSuspended: !!tab.isSuspended,
       workspaceId: tab.workspaceId,
     });
   };
@@ -107,7 +115,7 @@ function createWindow() {
   };
 
   // Register all IPC handlers
-  setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager, privacyManager);
+  setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager, privacyManager, tabSuspender);
 
   mainWindow.loadFile('index.html');
 
