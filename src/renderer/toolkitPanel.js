@@ -137,10 +137,12 @@
       this.btnCloseToolkit = document.getElementById('btn-close-toolkit');
 
       // Toolkit Tabs
+      this.tabBtnAi = document.getElementById('toolkit-tab-btn-ai');
       this.tabBtnJson = document.getElementById('toolkit-tab-btn-json');
       this.tabBtnApi = document.getElementById('toolkit-tab-btn-api');
       this.tabBtnNotes = document.getElementById('toolkit-tab-btn-notes');
 
+      this.paneAi = document.getElementById('toolkit-tab-ai');
       this.paneJson = document.getElementById('toolkit-tab-json');
       this.paneApi = document.getElementById('toolkit-tab-api');
       this.paneNotes = document.getElementById('toolkit-tab-notes');
@@ -273,7 +275,7 @@
       this.resizer.addEventListener('pointercancel', stopResizing);
 
       // Main Toolkit Tabs switching
-      [this.tabBtnJson, this.tabBtnApi, this.tabBtnNotes].forEach((btn) => {
+      [this.tabBtnAi, this.tabBtnJson, this.tabBtnApi, this.tabBtnNotes].filter(Boolean).forEach((btn) => {
         btn.addEventListener('click', () => {
           this.switchTab(btn.dataset.tab);
         });
@@ -425,12 +427,13 @@
 
     switchTab(tabId) {
       this.activeTab = tabId;
-      [this.tabBtnJson, this.tabBtnApi, this.tabBtnNotes].forEach((btn) => {
+      [this.tabBtnAi, this.tabBtnJson, this.tabBtnApi, this.tabBtnNotes].filter(Boolean).forEach((btn) => {
         btn.classList.toggle('active', btn.dataset.tab === tabId);
       });
-      this.paneJson.classList.toggle('hidden', tabId !== 'json');
-      this.paneApi.classList.toggle('hidden', tabId !== 'api');
-      this.paneNotes.classList.toggle('hidden', tabId !== 'notes');
+      if (this.paneAi) this.paneAi.classList.toggle('hidden', tabId !== 'ai');
+      if (this.paneJson) this.paneJson.classList.toggle('hidden', tabId !== 'json');
+      if (this.paneApi) this.paneApi.classList.toggle('hidden', tabId !== 'api');
+      if (this.paneNotes) this.paneNotes.classList.toggle('hidden', tabId !== 'notes');
 
       if (tabId === 'notes') {
         this.loadWorkspaceNotes();

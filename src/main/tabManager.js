@@ -22,6 +22,7 @@ class TabManager {
     this.onNewWindow = null;
     this.onViewFocus = null;
     this.onSendSelectionToNotes = null;
+    this.onAskAIAboutSelection = null;
   }
 
   /**
@@ -134,16 +135,27 @@ class TabManager {
     // Auto-detect JSON response pages and inject interactive viewer
     jsonPageHandler.attach(wc);
 
-    // Right-click context menu: send selected text to notes
+    // Right-click context menu: Ask AI or send selected text to notes
     wc.on('context-menu', (event, params) => {
       const menu = new Menu();
       if (params.selectionText && params.selectionText.trim()) {
+        const text = params.selectionText.trim();
+        menu.append(
+          new MenuItem({
+            label: '✨ Ask AI about selection',
+            click: () => {
+              if (this.onAskAIAboutSelection) {
+                this.onAskAIAboutSelection(text);
+              }
+            },
+          })
+        );
         menu.append(
           new MenuItem({
             label: '📝 Send selection to notes',
             click: () => {
               if (this.onSendSelectionToNotes) {
-                this.onSendSelectionToNotes(params.selectionText.trim());
+                this.onSendSelectionToNotes(text);
               }
             },
           })

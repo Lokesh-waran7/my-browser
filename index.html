@@ -188,15 +188,70 @@
 
           <div class="toolkit-header">
             <div class="toolkit-tabs-nav">
-              <button id="toolkit-tab-btn-json" class="toolkit-tab-btn active" data-tab="json">JSON</button>
+              <button id="toolkit-tab-btn-ai" class="toolkit-tab-btn active" data-tab="ai">✨ AI</button>
+              <button id="toolkit-tab-btn-json" class="toolkit-tab-btn" data-tab="json">JSON</button>
               <button id="toolkit-tab-btn-api" class="toolkit-tab-btn" data-tab="api">API Tester</button>
               <button id="toolkit-tab-btn-notes" class="toolkit-tab-btn" data-tab="notes">Notes</button>
             </div>
             <button id="btn-close-toolkit" class="toolkit-icon-btn" title="Close Toolkit (Ctrl+Shift+D)">✕</button>
           </div>
 
+          <!-- Tab Content: AI Assistant (Gemini) -->
+          <div id="toolkit-tab-ai" class="toolkit-pane">
+            <div class="ai-header-controls">
+              <div class="ai-model-tag">
+                <span class="ai-sparkle">✨</span>
+                <span id="ai-model-badge" class="ai-model-badge">gemini-2.5-flash</span>
+              </div>
+              <div class="ai-header-actions">
+                <button id="btn-ai-new-chat" class="toolkit-icon-btn small" title="Clear chat history for this workspace">🗑️ Clear</button>
+                <button id="btn-ai-settings" class="toolkit-icon-btn small" title="AI Settings & API Key">⚙️ Settings</button>
+              </div>
+            </div>
+
+            <!-- Quick Action Pills -->
+            <div class="ai-quick-actions-bar">
+              <button class="ai-quick-btn" data-action="summarize" title="Summarize current web page">📄 Summarize</button>
+              <button class="ai-quick-btn" data-action="explain-selection" title="Explain selected text">💡 Explain Selection</button>
+              <button class="ai-quick-btn" data-action="explain-code" title="Analyze code snippet">💻 Explain Code</button>
+              <button class="ai-quick-btn" data-action="ask-page" title="Ask question about this page">❓ Ask Page</button>
+            </div>
+
+            <!-- Page Context Attachment Banner -->
+            <div id="ai-context-indicator" class="ai-context-indicator hidden">
+              <div class="ai-context-text">
+                <span class="ai-context-pin">📎</span>
+                <span>Using content from:</span>
+                <strong id="ai-context-title">Page Title</strong>
+              </div>
+              <button type="button" id="btn-ai-remove-context" class="ai-context-remove" title="Detach page content">✕</button>
+            </div>
+
+            <!-- Chat Messages Scroll Container -->
+            <div id="ai-chat-messages" class="ai-chat-messages"></div>
+
+            <!-- Chat Input Area -->
+            <form id="ai-chat-form" class="ai-chat-form">
+              <div class="ai-chat-input-box">
+                <textarea 
+                  id="ai-chat-input" 
+                  class="ai-chat-textarea" 
+                  placeholder="Ask AI anything, or use page actions above... (Enter to send, Shift+Enter for newline)"
+                  rows="1"
+                ></textarea>
+                <div class="ai-input-toolbar">
+                  <button type="button" id="btn-ai-attach-page" class="ai-attach-btn" title="Attach active page context">📎 Attach Page</button>
+                  <div class="ai-submit-group">
+                    <button type="button" id="btn-ai-stop" class="toolkit-btn danger small hidden">⏹ Stop</button>
+                    <button type="submit" id="btn-ai-send" class="toolkit-btn primary small">Send</button>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+
           <!-- Tab Content: JSON Formatter & Validator -->
-          <div id="toolkit-tab-json" class="toolkit-pane">
+          <div id="toolkit-tab-json" class="toolkit-pane hidden">
             <div class="toolkit-section-header">
               <span class="toolkit-section-title">JSON Formatter & Validator</span>
               <div class="toolkit-btn-row">
@@ -607,8 +662,67 @@
     </div>
   </div>
 
+  <!-- AI Assistant Settings Modal (Step 8) -->
+  <div id="ai-settings-modal" class="modal-backdrop hidden">
+    <div class="modal-card ai-settings-card">
+      <div class="modal-header">
+        <h3>✨ AI Assistant Settings</h3>
+        <button id="btn-close-ai-settings" class="modal-close-btn">&times;</button>
+      </div>
+
+      <div class="ai-settings-body">
+        <!-- API Key Section -->
+        <div class="settings-group">
+          <label class="settings-label">Gemini API Key</label>
+          <div class="api-key-input-row">
+            <input type="password" id="ai-key-input" class="modal-input" placeholder="Enter Gemini API key (AIzaSy...)" autocomplete="off" />
+            <button type="button" id="btn-toggle-key-visibility" class="toolkit-btn secondary small" title="Show/Hide Key">👁️</button>
+            <button type="button" id="btn-delete-ai-key" class="toolkit-btn secondary small text-danger hidden" title="Delete stored key">🗑️ Delete</button>
+          </div>
+          <div class="key-status-row">
+            <span id="ai-key-status-label" class="text-xs text-muted">Checking stored key...</span>
+            <span id="ai-encryption-status" class="ai-encryption-badge">🔒 Protected with system safeStorage</span>
+          </div>
+          <p class="text-xs text-muted mt-1">Your API key is encrypted on your machine using OS safeStorage (DPAPI). It is never sent to the renderer or stored in plain-text.</p>
+        </div>
+
+        <!-- Model Selection Section -->
+        <div class="settings-group">
+          <label for="ai-model-select" class="settings-label">Gemini Model</label>
+          <select id="ai-model-select" class="modal-select"></select>
+          <p class="text-xs text-muted mt-1">Default model: <code>gemini-2.5-flash</code> (fast, multimodal, optimized for developer queries).</p>
+        </div>
+
+        <!-- Test Connection Section -->
+        <div class="settings-group">
+          <div class="test-connection-row">
+            <button type="button" id="btn-test-ai-connection" class="toolkit-btn secondary">Test Connection</button>
+            <span class="text-xs text-muted">Verifies key validity and API reachability</span>
+          </div>
+          <div id="ai-test-status-banner" class="ai-test-status-banner hidden"></div>
+        </div>
+
+        <!-- "Never Share with AI" Site Exclusion List -->
+        <div class="settings-group">
+          <label class="settings-label">Never Share with AI (Site Allowlist Exclusion)</label>
+          <p class="text-xs text-muted mb-2">Web pages matching these domains will NEVER have their content extracted or sent to the AI.</p>
+          <div class="never-share-input-row">
+            <input type="text" id="ai-never-share-input" class="modal-input" placeholder="e.g. internal.corp or bank.com" />
+            <button type="button" id="btn-add-never-share" class="toolkit-btn secondary small">+ Add</button>
+          </div>
+          <div id="ai-never-share-list" class="ai-domain-chips-wrapper"></div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="btn-save-ai-settings" class="modal-btn primary">Save & Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="src/renderer/jsonViewer.js"></script>
   <script src="src/renderer/toolkitPanel.js"></script>
+  <script src="src/renderer/aiPanel.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

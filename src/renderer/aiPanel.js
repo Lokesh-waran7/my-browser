@@ -1,0 +1,776 @@
+// AI Sidebar Assistant UI Module - Manages chat panel, streaming, quick actions, and settings modal
+(function (global) {
+  'use strict';
+
+  class AIPanel {
+    constructor(deps = {}) {
+      this.deps = deps; // { onBoundsChange, getActiveWorkspaceId, showOverlay, hideOverlay }
+      this.activeWorkspaceId = null;
+      this.isGenerating = false;
+      this.currentStreamId = null;
+      this.currentStreamingText = '';
+      this.pendingPageContext = null;
+      this.settings = null;
+
+      this.initDOMElements();
+      this.bindEvents();
+      this.loadSettings();
+    }
+
+    initDOMElements() {
+      // Main Panel & Tabs
+      this.panel = document.getElementById('dev-toolkit-panel');
+      this.paneAi = document.getElementById('toolkit-tab-ai');
+      this.tabBtnAi = document.getElementById('toolkit-tab-btn-ai');
+
+      // Header Controls
+      this.modelBadge = document.getElementById('ai-model-badge');
+      this.btnSettings = document.getElementById('btn-ai-settings');
+      this.btnNewChat = document.getElementById('btn-ai-new-chat');
+
+      // Page Context Bar
+      this.contextBar = document.getElementById('ai-context-indicator');
+      this.contextTitle = document.getElementById('ai-context-title');
+      this.btnRemoveContext = document.getElementById('btn-ai-remove-context');
+
+      // Quick Actions
+      this.quickActionBtns = document.querySelectorAll('.ai-quick-btn');
+
+      // Chat List & Form
+      this.chatMessages = document.getElementById('ai-chat-messages');
+      this.chatForm = document.getElementById('ai-chat-form');
+      this.chatInput = document.getElementById('ai-chat-input');
+      this.btnAttachPage = document.getElementById('btn-ai-attach-page');
+      this.btnSend = document.getElementById('btn-ai-send');
+      this.btnStop = document.getElementById('btn-ai-stop');
+
+      // Settings Modal
+      this.settingsModal = document.getElementById('ai-settings-modal');
+      this.apiKeyInput = document.getElementById('ai-key-input');
+      this.btnToggleKeyVisibility = document.getElementById('btn-toggle-key-visibility');
+      this.keyStatusLabel = document.getElementById('ai-key-status-label');
+      this.encryptionStatus = document.getElementById('ai-encryption-status');
+      this.btnDeleteKey = document.getElementById('btn-delete-ai-key');
+      this.modelSelect = document.getElementById('ai-model-select');
+      this.btnTestConnection = document.getElementById('btn-test-ai-connection');
+      this.testStatusBanner = document.getElementById('ai-test-status-banner');
+      this.neverShareInput = document.getElementById('ai-never-share-input');
+      this.btnAddNeverShare = document.getElementById('btn-add-never-share');
+      this.neverShareList = document.getElementById('ai-never-share-list');
+      this.btnCloseSettings = document.getElementById('btn-close-ai-settings');
+      this.btnSaveSettings = document.getElementById('btn-save-ai-settings');
+    }
+
+    bindEvents() {
+      // Chat Form submission
+      if (this.chatForm) {
+        this.chatForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          this.sendMessage();
+        });
+      }
+
+      // Enter to send, Shift+Enter for newline
+      if (this.chatInput) {
+        this.chatInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            this.sendMessage();
+          }
+        });
+
+        // Auto-expand textarea
+        this.chatInput.addEventListener('input', () => {
+          this.chatInput.style.height = 'auto';
+          this.chatInput.style.height = Math.min(140, Math.max(38, this.chatInput.scrollHeight)) + 'px';
+        });
+      }
+
+      // Stop Streaming button
+      if (this.btnStop) {
+        this.btnStop.addEventListener('click', () => {
+          this.stopStreaming();
+        });
+      }
+
+      // New Chat / Clear History
+      if (this.btnNewChat) {
+        this.btnNewChat.addEventListener('click', () => {
+          this.clearCurrentHistory();
+        });
+      }
+
+      // Attach Page button
+      if (this.btnAttachPage) {
+        this.btnAttachPage.addEventListener('click', () => {
+          this.attachActivePage();
+        });
+      }
+
+      // Remove Page Context
+      if (this.btnRemoveContext) {
+        this.btnRemoveContext.addEventListener('click', () => {
+          this.clearPendingPageContext();
+        });
+      }
+
+      // Quick Actions
+      this.quickActionBtns.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const action = btn.dataset.action;
+          this.handleQuickAction(action);
+        });
+      });
+
+      // Settings Modal Open/Close
+      if (this.btnSettings) {
+        this.btnSettings.addEventListener('click', () => {
+          this.openSettingsModal();
+        });
+      }
+      if (this.btnCloseSettings) {
+        this.btnCloseSettings.addEventListener('click', () => {
+          this.closeSettingsModal();
+        });
+      }
+      if (this.btnSaveSettings) {
+        this.btnSaveSettings.addEventListener('click', () => {
+          this.saveSettingsFromModal();
+        });
+      }
+
+      // Toggle key visibility
+      if (this.btnToggleKeyVisibility) {
+        this.btnToggleKeyVisibility.addEventListener('click', () => {
+          if (this.apiKeyInput.type === 'password') {
+            this.apiKeyInput.type = 'text';
+            this.btnToggleKeyVisibility.textContent = '🙈';
+          } else {
+            this.apiKeyInput.type = 'password';
+            this.btnToggleKeyVisibility.textContent = '👁️';
+          }
+        });
+      }
+
+      // Delete Key button
+      if (this.btnDeleteKey) {
+        this.btnDeleteKey.addEventListener('click', async () => {
+          if (confirm('Are you sure you want to delete your stored API key?')) {
+            await window.browserAPI.updateAiSettings({ apiKey: '' });
+            this.apiKeyInput.value = '';
+            await this.loadSettings();
+            this.showTestStatus('API key deleted.', 'info');
+          }
+        });
+      }
+
+      // Test Connection button
+      if (this.btnTestConnection) {
+        this.btnTestConnection.addEventListener('click', () => {
+          this.testConnection();
+        });
+      }
+
+      // Add "Never share" domain
+      if (this.btnAddNeverShare) {
+        this.btnAddNeverShare.addEventListener('click', () => {
+          this.addNeverShareDomain();
+        });
+      }
+      if (this.neverShareInput) {
+        this.neverShareInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            this.addNeverShareDomain();
+          }
+        });
+      }
+
+      // Stream IPC listeners
+      if (window.browserAPI.onAiStreamChunk) {
+        window.browserAPI.onAiStreamChunk((data) => {
+          if (data && data.streamId === this.currentStreamId) {
+            this.handleStreamChunk(data.chunk);
+          }
+        });
+      }
+
+      if (window.browserAPI.onAiStreamEnd) {
+        window.browserAPI.onAiStreamEnd((data) => {
+          if (data && data.streamId === this.currentStreamId) {
+            this.handleStreamEnd(data.fullText, data.message);
+          }
+        });
+      }
+
+      if (window.browserAPI.onAiStreamError) {
+        window.browserAPI.onAiStreamError((data) => {
+          if (data && data.streamId === this.currentStreamId) {
+            this.handleStreamError(data.error);
+          }
+        });
+      }
+
+      // Context menu right-click trigger: "Ask AI about selection"
+      if (window.browserAPI.onAiAskSelection) {
+        window.browserAPI.onAiAskSelection(({ text }) => {
+          this.handleAskSelectionFromContextMenu(text);
+        });
+      }
+    }
+
+    /**
+     * Loads settings from the main process.
+     */
+    async loadSettings() {
+      try {
+        const settings = await window.browserAPI.getAiSettings();
+        if (settings) {
+          this.settings = settings;
+          if (this.modelBadge) {
+            this.modelBadge.textContent = settings.model || 'gemini-2.5-flash';
+          }
+          this.populateSettingsModal();
+        }
+      } catch (err) {
+        console.error('Failed to load AI settings:', err);
+      }
+    }
+
+    populateSettingsModal() {
+      if (!this.settings) return;
+
+      // Masked key display
+      if (this.settings.hasKey) {
+        this.keyStatusLabel.textContent = `Stored securely (${this.settings.maskedKey})`;
+        this.keyStatusLabel.classList.remove('text-muted');
+        this.keyStatusLabel.classList.add('text-success');
+        this.btnDeleteKey.classList.remove('hidden');
+      } else {
+        this.keyStatusLabel.textContent = 'No API key stored';
+        this.keyStatusLabel.classList.remove('text-success');
+        this.keyStatusLabel.classList.add('text-muted');
+        this.btnDeleteKey.classList.add('hidden');
+      }
+
+      // Encryption status badge
+      if (this.settings.encryptionAvailable) {
+        this.encryptionStatus.textContent = '🔒 Protected with system safeStorage (DPAPI/Keychain)';
+        this.encryptionStatus.className = 'ai-encryption-badge encrypted';
+      } else {
+        this.encryptionStatus.textContent = '⚠️ System safeStorage unavailable (fallback storage)';
+        this.encryptionStatus.className = 'ai-encryption-badge unencrypted';
+      }
+
+      // Populate model options
+      if (this.modelSelect && this.settings.availableModels) {
+        this.modelSelect.innerHTML = '';
+        this.settings.availableModels.forEach((m) => {
+          const opt = document.createElement('option');
+          opt.value = m.id;
+          opt.textContent = m.name;
+          if (m.id === this.settings.model) opt.selected = true;
+          this.modelSelect.appendChild(opt);
+        });
+      }
+
+      // Populate Never Share domains
+      this.renderNeverShareList();
+    }
+
+    renderNeverShareList() {
+      if (!this.neverShareList || !this.settings) return;
+      this.neverShareList.innerHTML = '';
+
+      const domains = this.settings.neverShareDomains || [];
+      if (domains.length === 0) {
+        this.neverShareList.innerHTML = '<span class="text-muted text-xs">No excluded domains configured.</span>';
+        return;
+      }
+
+      domains.forEach((domain) => {
+        const chip = document.createElement('div');
+        chip.className = 'ai-domain-chip';
+        chip.innerHTML = `
+          <span>${escapeHtml(domain)}</span>
+          <button type="button" class="chip-remove-btn" title="Remove">✕</button>
+        `;
+        chip.querySelector('.chip-remove-btn').addEventListener('click', () => {
+          this.removeNeverShareDomain(domain);
+        });
+        this.neverShareList.appendChild(chip);
+      });
+    }
+
+    addNeverShareDomain() {
+      const val = (this.neverShareInput.value || '').trim().toLowerCase();
+      if (!val) return;
+      if (!this.settings.neverShareDomains.includes(val)) {
+        this.settings.neverShareDomains.push(val);
+        this.renderNeverShareList();
+      }
+      this.neverShareInput.value = '';
+    }
+
+    removeNeverShareDomain(domain) {
+      if (!this.settings || !this.settings.neverShareDomains) return;
+      this.settings.neverShareDomains = this.settings.neverShareDomains.filter((d) => d !== domain);
+      this.renderNeverShareList();
+    }
+
+    async saveSettingsFromModal() {
+      const newKey = (this.apiKeyInput.value || '').trim();
+      const selectedModel = this.modelSelect ? this.modelSelect.value : 'gemini-2.5-flash';
+
+      const updatePayload = {
+        model: selectedModel,
+        neverShareDomains: this.settings ? this.settings.neverShareDomains : [],
+      };
+      if (newKey) {
+        updatePayload.apiKey = newKey;
+      }
+
+      const updated = await window.browserAPI.updateAiSettings(updatePayload);
+      if (updated) {
+        this.settings = updated;
+        this.apiKeyInput.value = '';
+        this.populateSettingsModal();
+        if (this.modelBadge) {
+          this.modelBadge.textContent = updated.model;
+        }
+      }
+      this.closeSettingsModal();
+    }
+
+    async testConnection() {
+      const tempKey = (this.apiKeyInput.value || '').trim();
+      const selectedModel = this.modelSelect ? this.modelSelect.value : 'gemini-2.5-flash';
+
+      this.showTestStatus('Testing connection to Gemini API...', 'loading');
+      this.btnTestConnection.disabled = true;
+
+      try {
+        const result = await window.browserAPI.testAiConnection({
+          apiKey: tempKey || undefined,
+          model: selectedModel,
+        });
+
+        if (result && result.success) {
+          this.showTestStatus(result.message || 'Connection successful!', 'success');
+        } else {
+          this.showTestStatus(result.message || 'Connection failed.', 'error');
+        }
+      } catch (err) {
+        this.showTestStatus(`Error: ${err.message}`, 'error');
+      } finally {
+        this.btnTestConnection.disabled = false;
+      }
+    }
+
+    showTestStatus(message, type) {
+      if (!this.testStatusBanner) return;
+      this.testStatusBanner.className = `ai-test-status-banner ${type}`;
+      this.testStatusBanner.textContent = message;
+      this.testStatusBanner.classList.remove('hidden');
+    }
+
+    openSettingsModal() {
+      this.populateSettingsModal();
+      if (this.testStatusBanner) {
+        this.testStatusBanner.classList.add('hidden');
+      }
+      if (this.deps.showOverlay) {
+        this.deps.showOverlay(this.settingsModal);
+      } else {
+        this.settingsModal.classList.remove('hidden');
+      }
+      this.apiKeyInput.focus();
+    }
+
+    closeSettingsModal() {
+      if (this.deps.hideOverlay) {
+        this.deps.hideOverlay(this.settingsModal);
+      } else {
+        this.settingsModal.classList.add('hidden');
+      }
+    }
+
+    /**
+     * Workspace sync: switches conversation history when the user changes workspace.
+     */
+    async setWorkspace(workspaceId) {
+      this.activeWorkspaceId = workspaceId;
+      await this.loadWorkspaceHistory(workspaceId);
+    }
+
+    async loadWorkspaceHistory(workspaceId) {
+      const wsId = workspaceId || (this.deps.getActiveWorkspaceId ? this.deps.getActiveWorkspaceId() : 'ws-default');
+      try {
+        const history = await window.browserAPI.getAiHistory(wsId);
+        this.renderHistory(history || []);
+      } catch (err) {
+        console.error('Failed to load AI history:', err);
+      }
+    }
+
+    async clearCurrentHistory() {
+      const wsId = this.activeWorkspaceId || (this.deps.getActiveWorkspaceId ? this.deps.getActiveWorkspaceId() : 'ws-default');
+      if (confirm('Clear AI conversation history for this workspace?')) {
+        await window.browserAPI.clearAiHistory(wsId);
+        this.renderHistory([]);
+      }
+    }
+
+    /**
+     * Renders conversation message items in the chat container.
+     */
+    renderHistory(messages) {
+      if (!this.chatMessages) return;
+      this.chatMessages.innerHTML = '';
+
+      if (!messages || messages.length === 0) {
+        this.chatMessages.innerHTML = `
+          <div class="ai-empty-state">
+            <div class="ai-empty-icon">✨</div>
+            <h3>AI Coding Assistant</h3>
+            <p>Ask coding questions, summarize pages, explain code, or use the quick action buttons above.</p>
+          </div>
+        `;
+        return;
+      }
+
+      messages.forEach((msg) => {
+        this.appendMessageBubble(msg);
+      });
+      this.scrollToBottom();
+    }
+
+    appendMessageBubble(msg) {
+      // Remove empty state if present
+      const emptyState = this.chatMessages.querySelector('.ai-empty-state');
+      if (emptyState) emptyState.remove();
+
+      const el = document.createElement('div');
+      el.className = `ai-message ${msg.role}`;
+      el.id = msg.id;
+
+      // Header row with role avatar & copy button
+      const header = document.createElement('div');
+      header.className = 'ai-message-header';
+
+      const roleLabel = document.createElement('span');
+      roleLabel.className = 'ai-message-author';
+      roleLabel.innerHTML = msg.role === 'user' ? '🧑 <strong>You</strong>' : '✨ <strong>Gemini</strong>';
+      header.appendChild(roleLabel);
+
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'ai-copy-btn';
+      copyBtn.title = 'Copy message';
+      copyBtn.innerHTML = '📋 Copy';
+      copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(msg.content);
+        copyBtn.innerHTML = '✓ Copied';
+        setTimeout(() => { copyBtn.innerHTML = '📋 Copy'; }, 2000);
+      });
+      header.appendChild(copyBtn);
+
+      el.appendChild(header);
+
+      // Context badge if message utilized page content
+      if (msg.pageContext && msg.pageContext.title) {
+        const badge = document.createElement('div');
+        badge.className = 'ai-message-context-badge';
+        badge.innerHTML = `📎 <em>Using content from:</em> <strong>${escapeHtml(msg.pageContext.title)}</strong>`;
+        el.appendChild(badge);
+      }
+
+      // Message body formatted as Markdown and sanitized via DOMPurify
+      const body = document.createElement('div');
+      body.className = 'ai-message-body markdown-body';
+      if (window.markdownAPI && window.markdownAPI.render) {
+        body.innerHTML = window.markdownAPI.render(msg.content);
+      } else {
+        body.textContent = msg.content;
+      }
+
+      // Add "Copy Code" buttons to all code blocks
+      this.attachCodeBlockCopyButtons(body);
+
+      el.appendChild(body);
+      this.chatMessages.appendChild(el);
+      return el;
+    }
+
+    attachCodeBlockCopyButtons(container) {
+      const codeBlocks = container.querySelectorAll('pre');
+      codeBlocks.forEach((pre) => {
+        if (pre.querySelector('.code-copy-btn')) return; // already added
+
+        const btn = document.createElement('button');
+        btn.className = 'code-copy-btn';
+        btn.title = 'Copy code snippet';
+        btn.textContent = 'Copy';
+
+        btn.addEventListener('click', () => {
+          const code = pre.querySelector('code');
+          const text = code ? code.innerText : pre.innerText;
+          navigator.clipboard.writeText(text);
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+        });
+
+        pre.style.position = 'relative';
+        pre.appendChild(btn);
+      });
+    }
+
+    scrollToBottom() {
+      if (this.chatMessages) {
+        this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+      }
+    }
+
+    /**
+     * Attaches current web page context to the next message.
+     */
+    async attachActivePage() {
+      this.btnAttachPage.disabled = true;
+      try {
+        const pageData = await window.browserAPI.extractAiPageContent();
+        if (!pageData.allowed) {
+          alert(pageData.reason || 'Could not attach page content.');
+          return;
+        }
+
+        this.pendingPageContext = pageData;
+        this.contextTitle.textContent = pageData.title || pageData.url;
+        this.contextBar.classList.remove('hidden');
+      } catch (err) {
+        alert(`Failed to extract page content: ${err.message}`);
+      } finally {
+        this.btnAttachPage.disabled = false;
+      }
+    }
+
+    clearPendingPageContext() {
+      this.pendingPageContext = null;
+      if (this.contextBar) {
+        this.contextBar.classList.add('hidden');
+      }
+    }
+
+    /**
+     * Handles Quick Action buttons ("Summarize Page", "Explain Code", etc.).
+     */
+    async handleQuickAction(action) {
+      if (this.isGenerating) return;
+
+      // Ensure active page is extracted
+      const pageData = await window.browserAPI.extractAiPageContent();
+      if (!pageData.allowed) {
+        alert(pageData.reason || 'Page content could not be read.');
+        return;
+      }
+
+      this.pendingPageContext = pageData;
+
+      if (action === 'summarize') {
+        const prompt = 'Please summarize this web page. Provide a structured overview with key technical insights and takeaways.';
+        this.chatInput.value = prompt;
+        this.sendMessage();
+      } else if (action === 'explain-selection') {
+        if (pageData.selectedText) {
+          const prompt = `Please explain the selected text in detail:\n\n"${pageData.selectedText}"`;
+          this.chatInput.value = prompt;
+          this.sendMessage();
+        } else {
+          this.contextTitle.textContent = pageData.title;
+          this.contextBar.classList.remove('hidden');
+          this.chatInput.value = 'Please explain the main topic and purpose of this page.';
+          this.chatInput.focus();
+        }
+      } else if (action === 'explain-code') {
+        if (pageData.selectedText) {
+          const prompt = `Please analyze and explain this code snippet. Explain how it works, potential bugs, time complexity, and possible improvements:\n\n\`\`\`\n${pageData.selectedText}\n\`\`\``;
+          this.chatInput.value = prompt;
+          this.sendMessage();
+        } else {
+          const prompt = 'Please explain the code examples, APIs, and technical architecture described on this page.';
+          this.chatInput.value = prompt;
+          this.sendMessage();
+        }
+      } else if (action === 'ask-page') {
+        this.contextTitle.textContent = pageData.title;
+        this.contextBar.classList.remove('hidden');
+        this.chatInput.placeholder = 'Ask a question about this page...';
+        this.chatInput.focus();
+      }
+    }
+
+    /**
+     * Handles right-click context menu "Ask AI about selection".
+     */
+    async handleAskSelectionFromContextMenu(selectedText) {
+      if (!selectedText) return;
+
+      // Open toolkit panel and switch to AI tab
+      if (window.toolkitPanel) {
+        window.toolkitPanel.openPanel();
+        window.toolkitPanel.switchTab('ai');
+      }
+
+      // Extract active page for title/URL reference
+      const pageData = await window.browserAPI.extractAiPageContent();
+      if (pageData.allowed) {
+        this.pendingPageContext = {
+          ...pageData,
+          selectedText,
+        };
+      }
+
+      this.chatInput.value = `Explain the following selected text:\n\n"${selectedText}"`;
+      this.sendMessage();
+    }
+
+    /**
+     * Submits a user message and triggers streaming response.
+     */
+    async sendMessage() {
+      const prompt = (this.chatInput.value || '').trim();
+      if (!prompt || this.isGenerating) return;
+
+      // Check if API key is configured
+      if (!this.settings || !this.settings.hasKey) {
+        alert('Please configure your Gemini API key in settings (⚙️) to use the AI assistant.');
+        this.openSettingsModal();
+        return;
+      }
+
+      const wsId = this.activeWorkspaceId || (this.deps.getActiveWorkspaceId ? this.deps.getActiveWorkspaceId() : 'ws-default');
+      const pageContext = this.pendingPageContext;
+
+      // 1. Render user message bubble
+      const userMsg = {
+        id: `msg-${Date.now()}-u`,
+        role: 'user',
+        content: prompt,
+        timestamp: Date.now(),
+        pageContext: pageContext ? { title: pageContext.title, url: pageContext.url } : null,
+      };
+      this.appendMessageBubble(userMsg);
+
+      // Reset input & context bar
+      this.chatInput.value = '';
+      this.chatInput.style.height = '38px';
+      this.clearPendingPageContext();
+
+      // 2. Prepare streaming assistant bubble
+      this.isGenerating = true;
+      this.currentStreamId = `stream-${Date.now()}`;
+      this.currentStreamingText = '';
+
+      this.btnSend.classList.add('hidden');
+      this.btnStop.classList.remove('hidden');
+
+      const assistantMsg = {
+        id: `msg-${Date.now()}-a`,
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+      };
+      this.streamingBubbleEl = this.appendMessageBubble(assistantMsg);
+      this.streamingBodyEl = this.streamingBubbleEl.querySelector('.ai-message-body');
+      this.streamingBodyEl.innerHTML = '<span class="ai-streaming-cursor">▋</span>';
+      this.scrollToBottom();
+
+      // 3. Send IPC request to main process
+      try {
+        await window.browserAPI.sendAiMessage({
+          workspaceId: wsId,
+          prompt,
+          pageContext,
+          streamId: this.currentStreamId,
+        });
+      } catch (err) {
+        this.handleStreamError(err.message);
+      }
+    }
+
+    /**
+     * Handles streaming chunk arriving over IPC.
+     */
+    handleStreamChunk(chunk) {
+      if (!this.isGenerating || !this.streamingBodyEl) return;
+      this.currentStreamingText += chunk;
+
+      if (window.markdownAPI && window.markdownAPI.render) {
+        this.streamingBodyEl.innerHTML = window.markdownAPI.render(this.currentStreamingText) + '<span class="ai-streaming-cursor">▋</span>';
+      } else {
+        this.streamingBodyEl.textContent = this.currentStreamingText;
+      }
+      this.attachCodeBlockCopyButtons(this.streamingBodyEl);
+      this.scrollToBottom();
+    }
+
+    /**
+     * Handles streaming completion.
+     */
+    handleStreamEnd(fullText) {
+      this.isGenerating = false;
+      this.btnSend.classList.remove('hidden');
+      this.btnStop.classList.add('hidden');
+
+      if (this.streamingBodyEl) {
+        const text = fullText || this.currentStreamingText;
+        if (window.markdownAPI && window.markdownAPI.render) {
+          this.streamingBodyEl.innerHTML = window.markdownAPI.render(text);
+        } else {
+          this.streamingBodyEl.textContent = text;
+        }
+        this.attachCodeBlockCopyButtons(this.streamingBodyEl);
+      }
+      this.scrollToBottom();
+    }
+
+    /**
+     * Handles streaming errors.
+     */
+    handleStreamError(errorMsg) {
+      this.isGenerating = false;
+      this.btnSend.classList.remove('hidden');
+      this.btnStop.classList.add('hidden');
+
+      if (this.streamingBodyEl) {
+        this.streamingBodyEl.innerHTML = `
+          <div class="ai-error-box">
+            ⚠️ <strong>Error:</strong> ${escapeHtml(errorMsg || 'Failed to generate response.')}
+          </div>
+        `;
+      }
+      this.scrollToBottom();
+    }
+
+    /**
+     * Aborts current generation.
+     */
+    stopStreaming() {
+      if (this.isGenerating && this.currentStreamId) {
+        window.browserAPI.stopAiStream(this.currentStreamId);
+        this.handleStreamEnd(this.currentStreamingText);
+      }
+    }
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>"']/g, (m) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[m]));
+  }
+
+  global.AIPanel = AIPanel;
+})(window);

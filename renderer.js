@@ -98,6 +98,19 @@ if (window.ToolkitPanel) {
     showOverlay: (el) => showOverlay(el),
     hideOverlay: (el) => hideOverlay(el),
   });
+  window.toolkitPanel = toolkitPanel;
+}
+
+// AI Sidebar Assistant Instance (Step 8)
+let aiPanel = null;
+if (window.AIPanel) {
+  aiPanel = new window.AIPanel({
+    onBoundsChange: () => sendLayoutBounds(),
+    getActiveWorkspaceId: () => activeWorkspaceId,
+    showOverlay: (el) => showOverlay(el),
+    hideOverlay: (el) => hideOverlay(el),
+  });
+  window.aiPanel = aiPanel;
 }
 
 // Application State
@@ -1118,6 +1131,7 @@ window.addEventListener('keydown', (e) => {
     closeDeleteWorkspaceModal();
     closeMemoryDashboard();
     if (toolkitPanel) toolkitPanel.closeGpuModal();
+    if (aiPanel) aiPanel.closeSettingsModal();
     hideContextMenus();
   }
   // Ctrl+Shift+I or F12: Open DevTools for active tab's WebContentsView
@@ -1151,6 +1165,9 @@ window.browserAPI.onWorkspaceStateChanged(async (state) => {
   renderSplitLayout();
   if (toolkitPanel) {
     toolkitPanel.loadWorkspaceNotes();
+  }
+  if (aiPanel) {
+    aiPanel.setWorkspace(activeWorkspaceId);
   }
 });
 

@@ -73,6 +73,16 @@ contextBridge.exposeInMainWorld('browserAPI', {
   // GPU Diagnostics
   getGpuInfo: () => ipcRenderer.invoke('gpu:getInfo'),
 
+  // AI Assistant (Step 8)
+  getAiSettings: () => ipcRenderer.invoke('ai:getSettings'),
+  updateAiSettings: (settings) => ipcRenderer.invoke('ai:updateSettings', settings),
+  testAiConnection: (options) => ipcRenderer.invoke('ai:testConnection', options),
+  getAiHistory: (workspaceId) => ipcRenderer.invoke('ai:getHistory', workspaceId),
+  clearAiHistory: (workspaceId) => ipcRenderer.invoke('ai:clearHistory', workspaceId),
+  sendAiMessage: (options) => ipcRenderer.invoke('ai:sendMessage', options),
+  stopAiStream: (streamId) => ipcRenderer.invoke('ai:stopStream', streamId),
+  extractAiPageContent: () => ipcRenderer.invoke('ai:extractPage'),
+
   // Event Subscriptions
   onTabCreated: (callback) => {
     ipcRenderer.on('tab:created', (e, data) => callback(data));
@@ -100,5 +110,34 @@ contextBridge.exposeInMainWorld('browserAPI', {
   },
   onNotesInsertText: (callback) => {
     ipcRenderer.on('notes:insertText', (e, text) => callback(text));
+  },
+  onAiStreamChunk: (callback) => {
+    ipcRenderer.on('ai:streamChunk', (e, data) => callback(data));
+  },
+  onAiStreamEnd: (callback) => {
+    ipcRenderer.on('ai:streamEnd', (e, data) => callback(data));
+  },
+  onAiStreamError: (callback) => {
+    ipcRenderer.on('ai:streamError', (e, data) => callback(data));
+  },
+  onAiAskSelection: (callback) => {
+    ipcRenderer.on('ai:askSelection', (e, data) => callback(data));
+  },
+});
+
+// Markdown Renderer with DOMPurify sanitization
+const { marked } = require('marked');
+const createDOMPurify = require('dompurify');
+const DOMPurify = createDOMPurify(window);
+
+contextBridge.exposeInMainWorld('markdownAPI', {
+  render: (markdownText) => {
+    if (!markdownText) return '';
+    try {
+      const rawHtml = marked.parse(markdownText, { gfm: true, breaks: true });
+      return DOMPurify.sanitize(rawHtml);
+    } catch (err) {
+      return DOMPurify.sanitize(String(markdownText));
+    }
   },
 });

@@ -9,7 +9,8 @@ function setupIpcHandlers(
   privacyManager,
   tabSuspender,
   apiTester,
-  notesManager
+  notesManager,
+  aiManager
 ) {
   // Tab Management
   ipcMain.handle('tab:create', (event, url, activate) => {
@@ -337,6 +338,40 @@ function setupIpcHandlers(
       status: app.getGPUFeatureStatus(),
       info,
     };
+  });
+
+  // AI Assistant (Step 8)
+  ipcMain.handle('ai:getSettings', () => {
+    return aiManager ? aiManager.getPublicSettings() : null;
+  });
+
+  ipcMain.handle('ai:updateSettings', (event, settings) => {
+    return aiManager ? aiManager.updateSettings(settings) : null;
+  });
+
+  ipcMain.handle('ai:testConnection', async (event, options) => {
+    return aiManager ? await aiManager.testConnection(options) : { success: false, message: 'AI Manager not available.' };
+  });
+
+  ipcMain.handle('ai:getHistory', (event, workspaceId) => {
+    return aiManager ? aiManager.getHistory(workspaceId) : [];
+  });
+
+  ipcMain.handle('ai:clearHistory', (event, workspaceId) => {
+    return aiManager ? aiManager.clearHistory(workspaceId) : [];
+  });
+
+  ipcMain.handle('ai:sendMessage', async (event, options) => {
+    if (!aiManager) throw new Error('AI Manager is not initialized.');
+    return await aiManager.sendMessage(options);
+  });
+
+  ipcMain.handle('ai:stopStream', (event, streamId) => {
+    return aiManager ? aiManager.stopStream(streamId) : false;
+  });
+
+  ipcMain.handle('ai:extractPage', async () => {
+    return aiManager ? await aiManager.extractActivePage() : { allowed: false, reason: 'AI Manager not available.' };
   });
 }
 

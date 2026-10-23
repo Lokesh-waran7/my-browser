@@ -15,6 +15,7 @@ const TabSuspender = require('./src/main/tabSuspender');
 const privacyManager = require('./src/main/privacyManager');
 const ApiTester = require('./src/main/apiTester');
 const NotesManager = require('./src/main/notesManager');
+const AIManager = require('./src/main/ai/aiManager');
 const setupIpcHandlers = require('./src/main/ipcHandlers');
 
 let mainWindow = null;
@@ -24,6 +25,7 @@ let workspaceManager = null;
 let tabSuspender = null;
 let apiTester = null;
 let notesManager = null;
+let aiManager = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -47,6 +49,7 @@ function createWindow() {
   tabSuspender = new TabSuspender(mainWindow, tabManager, splitManager, workspaceManager);
   apiTester = new ApiTester();
   notesManager = new NotesManager();
+  aiManager = new AIManager(mainWindow, tabManager, workspaceManager);
 
   tabManager.tabSuspender = tabSuspender;
   splitManager.tabSuspender = tabSuspender;
@@ -55,6 +58,11 @@ function createWindow() {
   // Context-menu hook: send selected page text to active note
   tabManager.onSendSelectionToNotes = (text) => {
     mainWindow.webContents.send('notes:insertText', text);
+  };
+
+  // Context-menu hook: Ask AI about selected text
+  tabManager.onAskAIAboutSelection = (text) => {
+    mainWindow.webContents.send('ai:askSelection', { text });
   };
 
   // Wire TabManager events
@@ -142,7 +150,8 @@ function createWindow() {
     privacyManager,
     tabSuspender,
     apiTester,
-    notesManager
+    notesManager,
+    aiManager
   );
 
   mainWindow.loadFile('index.html');
