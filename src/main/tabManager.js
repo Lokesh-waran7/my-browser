@@ -1,7 +1,8 @@
 // Tab Manager - Manages WebContentsView instances, lifecycle, security, and view creation
-const { WebContentsView } = require('electron');
+const { WebContentsView, Menu, MenuItem } = require('electron');
 const privacyManager = require('./privacyManager');
 const youtubeAdHandler = require('./youtubeAdHandler');
+const jsonPageHandler = require('./jsonPageHandler');
 
 class TabManager {
   constructor(mainWindow) {
@@ -20,6 +21,7 @@ class TabManager {
     this.onTabCrash = null;
     this.onNewWindow = null;
     this.onViewFocus = null;
+    this.onSendSelectionToNotes = null;
   }
 
   /**
@@ -127,6 +129,30 @@ class TabManager {
       tab.title = 'Page Crashed';
       if (this.onTabCrash) this.onTabCrash(tab, details);
       if (this.onTabUpdated) this.onTabUpdated(tab);
+    });
+
+    // Auto-detect JSON response pages and inject interactive viewer
+    jsonPageHandler.attach(wc);
+
+    // Right-click context menu: send selected text to notes
+    wc.on('context-menu', (event, params) => {
+      const menu = new Menu();
+      if (params.selectionText && params.selectionText.trim()) {
+        menu.append(
+          new MenuItem({
+            label: '📝 Send selection to notes',
+            click: () => {
+              if (this.onSendSelectionToNotes) {
+                this.onSendSelectionToNotes(params.selectionText.trim());
+              }
+            },
+          })
+        );
+        menu.append(new MenuItem({ type: 'separator' }));
+      }
+      menu.append(new MenuItem({ role: 'copy' }));
+      menu.append(new MenuItem({ role: 'selectAll' }));
+      menu.popup();
     });
 
     if (urlToLoad) {

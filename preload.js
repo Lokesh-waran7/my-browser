@@ -49,6 +49,30 @@ contextBridge.exposeInMainWorld('browserAPI', {
   removeSuspenderWhitelist: (domain) => ipcRenderer.invoke('suspender:removeWhitelist', domain),
   getMemoryStats: () => ipcRenderer.invoke('memory:getStats'),
 
+  // Developer Toolkit - API Tester
+  sendApiRequest: (options) => ipcRenderer.invoke('apiTester:sendRequest', options),
+  getApiHistory: () => ipcRenderer.invoke('apiTester:getHistory'),
+  clearApiHistory: () => ipcRenderer.invoke('apiTester:clearHistory'),
+  getApiCollections: () => ipcRenderer.invoke('apiTester:getCollections'),
+  saveApiToCollection: (options) => ipcRenderer.invoke('apiTester:saveToCollection', options),
+  deleteApiFromCollection: (options) => ipcRenderer.invoke('apiTester:deleteFromCollection', options),
+  createApiCollection: (name) => ipcRenderer.invoke('apiTester:createCollection', name),
+  deleteApiCollection: (name) => ipcRenderer.invoke('apiTester:deleteCollection', name),
+  getApiEnvironment: () => ipcRenderer.invoke('apiTester:getEnvironment'),
+  saveApiEnvironment: (env) => ipcRenderer.invoke('apiTester:saveEnvironment', env),
+  getApiSettings: () => ipcRenderer.invoke('apiTester:getSettings'),
+  saveApiSettings: (settings) => ipcRenderer.invoke('apiTester:saveSettings', settings),
+
+  // Developer Toolkit - Notes
+  getWorkspaceNotes: (workspaceId) => ipcRenderer.invoke('notes:getWorkspaceNotes', workspaceId),
+  saveNote: (options) => ipcRenderer.invoke('notes:saveNote', options),
+  deleteNote: (options) => ipcRenderer.invoke('notes:deleteNote', options),
+  exportNote: (options) => ipcRenderer.invoke('notes:exportNote', options),
+  getSelectedText: () => ipcRenderer.invoke('tab:getSelectedText'),
+
+  // GPU Diagnostics
+  getGpuInfo: () => ipcRenderer.invoke('gpu:getInfo'),
+
   // Event Subscriptions
   onTabCreated: (callback) => {
     ipcRenderer.on('tab:created', (e, data) => callback(data));
@@ -73,5 +97,8 @@ contextBridge.exposeInMainWorld('browserAPI', {
   },
   onWorkspaceStateChanged: (callback) => {
     ipcRenderer.on('workspace:stateChanged', (e, data) => callback(data));
+  },
+  onNotesInsertText: (callback) => {
+    ipcRenderer.on('notes:insertText', (e, text) => callback(text));
   },
 });

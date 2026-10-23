@@ -114,6 +114,12 @@
               <line x1="18" y1="18" x2="18" y2="21"></line>
             </svg>
           </button>
+          <button id="btn-dev-toolkit" class="nav-btn" title="Developer Toolkit (Ctrl+Shift+D)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 18 22 12 16 6"></polyline>
+              <polyline points="8 6 2 12 8 18"></polyline>
+            </svg>
+          </button>
         </div>
       </nav>
 
@@ -123,55 +129,258 @@
         <button id="btn-reload-crash" class="crash-reload-btn">Reload Page</button>
       </div>
 
-      <!-- Main View Area (Geometry anchor for WebContentsViews) -->
-      <div id="view-area">
-        <!-- Single Mode Mount Area -->
-        <div id="view-mount-single"></div>
+      <!-- Main Content Body: Flex row containing view-area and the resizable right dev-toolkit-panel -->
+      <div id="content-body">
+        <!-- Main View Area (Geometry anchor for WebContentsViews) -->
+        <div id="view-area">
+          <!-- Single Mode Mount Area -->
+          <div id="view-mount-single"></div>
 
-        <!-- Split View Container -->
-        <div id="split-container" class="hidden">
-          <!-- Left Pane -->
-          <div id="pane-left" class="split-pane">
-            <div class="pane-header" id="header-left">
-              <div class="pane-header-info">
-                <span class="pane-favicon" id="favicon-left">🌐</span>
-                <span class="pane-title" id="title-left">Left Pane</span>
+          <!-- Split View Container -->
+          <div id="split-container" class="hidden">
+            <!-- Left Pane -->
+            <div id="pane-left" class="split-pane">
+              <div class="pane-header" id="header-left">
+                <div class="pane-header-info">
+                  <span class="pane-favicon" id="favicon-left">🌐</span>
+                  <span class="pane-title" id="title-left">Left Pane</span>
+                </div>
+                <span class="pane-status-badge">Left</span>
               </div>
-              <span class="pane-status-badge">Left</span>
+              <div id="view-mount-left" class="pane-view-mount"></div>
             </div>
-            <div id="view-mount-left" class="pane-view-mount"></div>
-          </div>
 
-          <!-- Draggable Split Divider -->
-          <div id="split-divider" class="split-divider" title="Drag to resize panes">
-            <div class="divider-grip"></div>
-          </div>
+            <!-- Draggable Split Divider -->
+            <div id="split-divider" class="split-divider" title="Drag to resize panes">
+              <div class="divider-grip"></div>
+            </div>
 
-          <!-- Right Pane -->
-          <div id="pane-right" class="split-pane">
-            <div class="pane-header" id="header-right">
-              <div class="pane-header-info">
-                <span class="pane-favicon" id="favicon-right">🌐</span>
-                <span class="pane-title" id="title-right">Right Pane</span>
+            <!-- Right Pane -->
+            <div id="pane-right" class="split-pane">
+              <div class="pane-header" id="header-right">
+                <div class="pane-header-info">
+                  <span class="pane-favicon" id="favicon-right">🌐</span>
+                  <span class="pane-title" id="title-right">Right Pane</span>
+                </div>
+                <span class="pane-status-badge">Right</span>
               </div>
-              <span class="pane-status-badge">Right</span>
-            </div>
-            <div id="view-mount-right" class="pane-view-mount"></div>
+              <div id="view-mount-right" class="pane-view-mount"></div>
 
-            <!-- Tab Picker (Shown in right pane when selecting tab for split) -->
-            <div id="tab-picker" class="tab-picker hidden">
-              <div class="picker-card">
-                <h3>Select a Tab for Right Pane</h3>
-                <p>Choose an existing tab or open a new one:</p>
-                <div id="picker-tab-list" class="picker-tab-list"></div>
-                <div class="picker-actions">
-                  <button id="btn-picker-new-tab" class="picker-btn primary">+ Open New Tab</button>
-                  <button id="btn-picker-cancel" class="picker-btn secondary">Cancel</button>
+              <!-- Tab Picker (Shown in right pane when selecting tab for split) -->
+              <div id="tab-picker" class="tab-picker hidden">
+                <div class="picker-card">
+                  <h3>Select a Tab for Right Pane</h3>
+                  <p>Choose an existing tab or open a new one:</p>
+                  <div id="picker-tab-list" class="picker-tab-list"></div>
+                  <div class="picker-actions">
+                    <button id="btn-picker-new-tab" class="picker-btn primary">+ Open New Tab</button>
+                    <button id="btn-picker-cancel" class="picker-btn secondary">Cancel</button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
+
+        <!-- Developer Toolkit Side Panel (Resizable, Docked Right) -->
+        <aside id="dev-toolkit-panel" class="hidden">
+          <div id="toolkit-resizer" class="toolkit-resizer" title="Drag to resize Developer Toolkit"></div>
+
+          <div class="toolkit-header">
+            <div class="toolkit-tabs-nav">
+              <button id="toolkit-tab-btn-json" class="toolkit-tab-btn active" data-tab="json">JSON</button>
+              <button id="toolkit-tab-btn-api" class="toolkit-tab-btn" data-tab="api">API Tester</button>
+              <button id="toolkit-tab-btn-notes" class="toolkit-tab-btn" data-tab="notes">Notes</button>
+            </div>
+            <button id="btn-close-toolkit" class="toolkit-icon-btn" title="Close Toolkit (Ctrl+Shift+D)">✕</button>
+          </div>
+
+          <!-- Tab Content: JSON Formatter & Validator -->
+          <div id="toolkit-tab-json" class="toolkit-pane">
+            <div class="toolkit-section-header">
+              <span class="toolkit-section-title">JSON Formatter & Validator</span>
+              <div class="toolkit-btn-row">
+                <button id="btn-json-format" class="toolkit-btn primary small">Format & Validate</button>
+                <button id="btn-json-minify" class="toolkit-btn secondary small">Minify</button>
+                <button id="btn-json-clear" class="toolkit-btn secondary small">Clear</button>
+              </div>
+            </div>
+            <div class="json-input-wrapper">
+              <textarea id="json-input-text" class="toolkit-textarea" placeholder="Paste raw JSON here to validate, format, search, and inspect..."></textarea>
+            </div>
+            <div id="json-validation-status" class="json-validation-status hidden"></div>
+            <div id="json-output-viewer" class="json-output-viewer"></div>
+          </div>
+
+          <!-- Tab Content: API Tester (Mini Postman) -->
+          <div id="toolkit-tab-api" class="toolkit-pane hidden">
+            <!-- Request URL Bar -->
+            <div class="api-request-bar">
+              <select id="api-method-select" class="api-method-select">
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+                <option value="PATCH">PATCH</option>
+                <option value="DELETE">DELETE</option>
+                <option value="HEAD">HEAD</option>
+                <option value="OPTIONS">OPTIONS</option>
+              </select>
+              <input type="text" id="api-url-input" class="api-url-input" placeholder="https://api.example.com or {{baseUrl}}/posts" />
+              <button id="btn-api-send" class="toolkit-btn primary">Send</button>
+            </div>
+
+            <!-- Subtabs & Utility Actions -->
+            <div class="api-subtabs-row">
+              <div class="api-subtabs-nav">
+                <button class="api-subtab-btn active" data-subtab="params">Params</button>
+                <button class="api-subtab-btn" data-subtab="headers">Headers</button>
+                <button class="api-subtab-btn" data-subtab="body">Body</button>
+                <button class="api-subtab-btn" data-subtab="vars">Variables</button>
+                <button class="api-subtab-btn" data-subtab="history">History</button>
+                <button class="api-subtab-btn" data-subtab="collections">Saved</button>
+              </div>
+              <div class="api-action-buttons">
+                <button id="btn-api-copy-curl" class="toolkit-icon-btn small" title="Copy as cURL">cURL</button>
+                <button id="btn-api-copy-fetch" class="toolkit-icon-btn small" title="Copy as fetch()">fetch</button>
+                <button id="btn-api-save-collection" class="toolkit-icon-btn small" title="Save to Collection">💾</button>
+              </div>
+            </div>
+
+            <!-- Params Subtab -->
+            <div id="api-subtab-params" class="api-subtab-pane">
+              <div class="kv-table-header">
+                <span class="kv-col-key">Param Key</span>
+                <span class="kv-col-val">Value</span>
+                <span class="kv-col-action"></span>
+              </div>
+              <div id="api-params-list" class="kv-list"></div>
+              <button id="btn-add-param" class="toolkit-btn secondary small">+ Add Param</button>
+            </div>
+
+            <!-- Headers Subtab -->
+            <div id="api-subtab-headers" class="api-subtab-pane hidden">
+              <div class="kv-table-header">
+                <span class="kv-col-key">Header Key</span>
+                <span class="kv-col-val">Value</span>
+                <span class="kv-col-action"></span>
+              </div>
+              <div id="api-headers-list" class="kv-list"></div>
+              <button id="btn-add-header" class="toolkit-btn secondary small">+ Add Header</button>
+            </div>
+
+            <!-- Body Subtab -->
+            <div id="api-subtab-body" class="api-subtab-pane hidden">
+              <div class="api-body-type-row">
+                <label><input type="radio" name="api-body-type" value="none" checked> None</label>
+                <label><input type="radio" name="api-body-type" value="json"> JSON</label>
+                <label><input type="radio" name="api-body-type" value="form"> Form</label>
+                <label><input type="radio" name="api-body-type" value="raw"> Raw</label>
+              </div>
+              <div id="api-body-json-wrapper" class="api-body-wrapper hidden">
+                <textarea id="api-body-json" class="toolkit-textarea" placeholder='{\n  "name": "value"\n}'></textarea>
+              </div>
+              <div id="api-body-form-wrapper" class="api-body-wrapper hidden">
+                <div id="api-form-list" class="kv-list"></div>
+                <button id="btn-add-form-pair" class="toolkit-btn secondary small">+ Add Field</button>
+              </div>
+              <div id="api-body-raw-wrapper" class="api-body-wrapper hidden">
+                <textarea id="api-body-raw" class="toolkit-textarea" placeholder="Raw body data..."></textarea>
+              </div>
+            </div>
+
+            <!-- Variables Subtab -->
+            <div id="api-subtab-vars" class="api-subtab-pane hidden">
+              <p class="api-help-text">Use <code>{{variableName}}</code> in URL, Headers, and Body.</p>
+              <div id="api-vars-list" class="kv-list"></div>
+              <div class="api-vars-actions">
+                <button id="btn-add-var" class="toolkit-btn secondary small">+ Add Variable</button>
+                <button id="btn-save-vars" class="toolkit-btn primary small">Save Variables</button>
+              </div>
+              <div class="api-settings-box">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="api-allow-private-toggle" checked />
+                  <span>Allow localhost and private network requests</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- History Subtab -->
+            <div id="api-subtab-history" class="api-subtab-pane hidden">
+              <div class="api-history-header">
+                <span>Recent Requests (last 50)</span>
+                <button id="btn-clear-api-history" class="toolkit-btn secondary small">Clear</button>
+              </div>
+              <div id="api-history-list" class="api-history-list"></div>
+            </div>
+
+            <!-- Collections Subtab -->
+            <div id="api-subtab-collections" class="api-subtab-pane hidden">
+              <div class="api-collections-header">
+                <span>Saved Collections</span>
+                <button id="btn-new-collection" class="toolkit-btn secondary small">+ New Collection</button>
+              </div>
+              <div id="api-collections-list" class="api-collections-list"></div>
+            </div>
+
+            <!-- API Response Section -->
+            <div class="api-response-container">
+              <div class="api-response-header">
+                <div class="api-response-meta">
+                  <span id="api-res-status" class="api-status-badge">Ready</span>
+                  <span id="api-res-time" class="api-metric-item">-- ms</span>
+                  <span id="api-res-size" class="api-metric-item">-- KB</span>
+                </div>
+                <div class="api-res-nav">
+                  <button id="btn-res-tab-body" class="api-res-tab-btn active">Body</button>
+                  <button id="btn-res-tab-headers" class="api-res-tab-btn">Headers</button>
+                  <button id="btn-copy-response" class="toolkit-icon-btn small" title="Copy Response Body">Copy</button>
+                </div>
+              </div>
+              <div id="api-response-body-wrapper" class="api-res-content">
+                <div id="api-response-json-viewer"></div>
+                <pre id="api-response-raw-text" class="json-raw-view hidden"></pre>
+              </div>
+              <div id="api-response-headers-wrapper" class="api-res-content hidden">
+                <table class="memory-table">
+                  <thead><tr><th>Header</th><th>Value</th></tr></thead>
+                  <tbody id="api-response-headers-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab Content: Notes (Workspace-scoped Markdown) -->
+          <div id="toolkit-tab-notes" class="toolkit-pane hidden">
+            <div class="notes-top-bar">
+              <div class="notes-selector-wrapper">
+                <select id="notes-list-select" class="notes-select"></select>
+                <button id="btn-new-note" class="toolkit-icon-btn" title="Create New Note">+</button>
+                <button id="btn-delete-note" class="toolkit-icon-btn text-danger" title="Delete Note">🗑️</button>
+              </div>
+              <input type="text" id="notes-search-input" class="notes-search-input" placeholder="Search notes..." />
+            </div>
+
+            <div class="notes-quick-actions">
+              <button id="btn-note-add-page" class="toolkit-btn secondary small" title="Insert [Title](URL) of active page">📄 Add Page</button>
+              <button id="btn-note-add-selection" class="toolkit-btn secondary small" title="Insert selected text from active page">📋 Add Selection</button>
+              <button id="btn-note-export-md" class="toolkit-btn secondary small" title="Export note as .md file">⬇️ Export .md</button>
+              <div class="notes-view-mode-toggle">
+                <button id="btn-note-mode-edit" class="note-mode-btn active" data-mode="edit">Edit</button>
+                <button id="btn-note-mode-preview" class="note-mode-btn" data-mode="preview">Preview</button>
+              </div>
+            </div>
+
+            <div class="notes-title-row">
+              <input type="text" id="note-title-input" class="note-title-input" placeholder="Note Title..." />
+              <span id="note-save-status" class="note-save-status">Saved</span>
+            </div>
+
+            <div class="notes-editor-container">
+              <textarea id="note-editor-textarea" class="note-textarea" placeholder="Write markdown notes here... Supports # headings, - lists, `code`, **bold**, etc."></textarea>
+              <div id="note-preview-container" class="note-preview markdown-body hidden"></div>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   </div>
@@ -349,6 +558,57 @@
     </div>
   </div>
 
+  <!-- GPU Diagnostics Modal (browser://gpu) -->
+  <div id="gpu-modal" class="modal-backdrop hidden">
+    <div class="modal-card gpu-card">
+      <div class="memory-header">
+        <div class="memory-header-title">
+          <span class="memory-header-icon">⚡</span>
+          <h3>GPU & Hardware Acceleration Diagnostics (browser://gpu)</h3>
+        </div>
+        <button id="btn-close-gpu" class="modal-close-icon" title="Close">✕</button>
+      </div>
+
+      <div class="gpu-banner">
+        <div class="gpu-badge-box">
+          <span class="gpu-badge-label">Video Decode:</span>
+          <span id="gpu-video-decode-badge" class="badge-status enabled">Hardware Accelerated</span>
+        </div>
+        <div class="gpu-badge-box">
+          <span class="gpu-badge-label">GPU Compositing:</span>
+          <span id="gpu-compositing-badge" class="badge-status enabled">Hardware Accelerated</span>
+        </div>
+        <div class="gpu-badge-box">
+          <span class="gpu-badge-label">GPU Device:</span>
+          <span id="gpu-renderer-label" class="text-white">AMD Radeon(TM) Graphics</span>
+        </div>
+      </div>
+
+      <div class="memory-section">
+        <h4>GPU Feature Status</h4>
+        <div class="memory-table-wrapper">
+          <table class="memory-table">
+            <thead>
+              <tr><th>Feature</th><th>Status</th><th>Hardware Status</th></tr>
+            </thead>
+            <tbody id="gpu-features-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="memory-section">
+        <h4>Complete GPU Info</h4>
+        <div id="gpu-complete-viewer" class="gpu-info-viewer-box"></div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="btn-done-gpu" class="modal-btn primary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="src/renderer/jsonViewer.js"></script>
+  <script src="src/renderer/toolkitPanel.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

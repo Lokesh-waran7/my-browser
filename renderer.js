@@ -88,6 +88,18 @@ const btnSuspendAllBackground = document.getElementById('btn-suspend-all-backgro
 const memoryTabTbody = document.getElementById('memory-tab-tbody');
 let memoryRefreshInterval = null;
 
+// Developer Toolkit Panel Instance
+let toolkitPanel = null;
+if (window.ToolkitPanel) {
+  toolkitPanel = new window.ToolkitPanel({
+    onBoundsChange: () => sendLayoutBounds(),
+    getTargetTab: () => getTargetTab(),
+    getActiveWorkspaceId: () => activeWorkspaceId,
+    showOverlay: (el) => showOverlay(el),
+    hideOverlay: (el) => hideOverlay(el),
+  });
+}
+
 // Application State
 let workspaces = [];
 let activeWorkspaceId = null;
@@ -1019,6 +1031,10 @@ urlForm.addEventListener('submit', (e) => {
     openMemoryDashboard();
     return;
   }
+  if (inputVal === 'browser://gpu' || inputVal === 'chrome://gpu' || inputVal === 'about:gpu') {
+    if (toolkitPanel) toolkitPanel.openGpuDiagnostics();
+    return;
+  }
   const targetTab = getTargetTab();
   if (targetTab) {
     const url = normalizeUrl(urlInput.value);
@@ -1076,6 +1092,11 @@ window.addEventListener('keydown', (e) => {
       window.browserAPI.toggleSplitView();
     }
   }
+  // Ctrl+Shift+D: Toggle Developer Toolkit
+  else if (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'd') {
+    e.preventDefault();
+    if (toolkitPanel) toolkitPanel.togglePanel();
+  }
   // Ctrl+T: New Tab
   else if (isCtrlOrCmd && !e.shiftKey && e.key.toLowerCase() === 't') {
     e.preventDefault();
@@ -1096,6 +1117,7 @@ window.addEventListener('keydown', (e) => {
     closeWorkspaceModal();
     closeDeleteWorkspaceModal();
     closeMemoryDashboard();
+    if (toolkitPanel) toolkitPanel.closeGpuModal();
     hideContextMenus();
   }
   // Ctrl+Shift+I or F12: Open DevTools for active tab's WebContentsView
@@ -1121,7 +1143,18 @@ window.browserAPI.onWorkspaceStateChanged((state) => {
   renderSidebarTabs();
   updateToolbar();
   renderSplitLayout();
+  if (toolkitPanel) {
+    toolkitPanel.loadWorkspaceNotes();
+  }
 });
+
+if (window.browserAPI.onNotesInsertText) {
+  window.browserAPI.onNotesInsertText((text) => {
+    if (toolkitPanel) {
+      toolkitPanel.appendSnippetToActiveNote(`\n\n> ${text}\n`);
+    }
+  });
+}
 
 window.browserAPI.onTabCreated((newTab) => {
   const existing = tabs.find((t) => t.id === newTab.id);

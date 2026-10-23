@@ -1,11 +1,20 @@
-// Coder Browser - Step 4: Workspaces & Multi-Context Tabs
+// Coder Browser - Step 7: Developer Toolkit & GPU Acceleration
 const { app, BrowserWindow, session } = require('electron');
 const path = require('path');
+
+// Hardware acceleration & GPU switches to unlock full GPU rasterization and video decode
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-gpu-rasterization');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('enable-accelerated-video-decode');
+
 const TabManager = require('./src/main/tabManager');
 const SplitManager = require('./src/main/splitManager');
 const WorkspaceManager = require('./src/main/workspaceManager');
 const TabSuspender = require('./src/main/tabSuspender');
 const privacyManager = require('./src/main/privacyManager');
+const ApiTester = require('./src/main/apiTester');
+const NotesManager = require('./src/main/notesManager');
 const setupIpcHandlers = require('./src/main/ipcHandlers');
 
 let mainWindow = null;
@@ -13,6 +22,8 @@ let tabManager = null;
 let splitManager = null;
 let workspaceManager = null;
 let tabSuspender = null;
+let apiTester = null;
+let notesManager = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -34,9 +45,17 @@ function createWindow() {
   splitManager = new SplitManager(mainWindow, tabManager);
   workspaceManager = new WorkspaceManager(mainWindow, tabManager, splitManager);
   tabSuspender = new TabSuspender(mainWindow, tabManager, splitManager, workspaceManager);
+  apiTester = new ApiTester();
+  notesManager = new NotesManager();
+
   tabManager.tabSuspender = tabSuspender;
   splitManager.tabSuspender = tabSuspender;
   workspaceManager.tabSuspender = tabSuspender;
+
+  // Context-menu hook: send selected page text to active note
+  tabManager.onSendSelectionToNotes = (text) => {
+    mainWindow.webContents.send('notes:insertText', text);
+  };
 
   // Wire TabManager events
   tabManager.onTabCreated = (tab, activate) => {
@@ -115,7 +134,16 @@ function createWindow() {
   };
 
   // Register all IPC handlers
-  setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager, privacyManager, tabSuspender);
+  setupIpcHandlers(
+    mainWindow,
+    tabManager,
+    splitManager,
+    workspaceManager,
+    privacyManager,
+    tabSuspender,
+    apiTester,
+    notesManager
+  );
 
   mainWindow.loadFile('index.html');
 

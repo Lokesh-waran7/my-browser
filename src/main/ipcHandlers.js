@@ -1,7 +1,16 @@
 // IPC Handlers - Bridges UI renderer commands with main process managers
 const { ipcMain } = require('electron');
 
-function setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager, privacyManager, tabSuspender) {
+function setupIpcHandlers(
+  mainWindow,
+  tabManager,
+  splitManager,
+  workspaceManager,
+  privacyManager,
+  tabSuspender,
+  apiTester,
+  notesManager
+) {
   // Tab Management
   ipcMain.handle('tab:create', (event, url, activate) => {
     const tab = tabManager.createTab(url, activate !== false);
@@ -234,9 +243,96 @@ function setupIpcHandlers(mainWindow, tabManager, splitManager, workspaceManager
     return true;
   });
 
-  // Memory Dashboard
-  ipcMain.handle('memory:getStats', () => {
-    return tabSuspender ? tabSuspender.getMemoryStats() : null;
+  // Developer Toolkit - API Tester
+  ipcMain.handle('apiTester:sendRequest', async (event, options) => {
+    return apiTester ? await apiTester.sendRequest(options) : null;
+  });
+
+  ipcMain.handle('apiTester:getHistory', () => {
+    return apiTester ? apiTester.getHistory() : [];
+  });
+
+  ipcMain.handle('apiTester:clearHistory', () => {
+    return apiTester ? apiTester.clearHistory() : true;
+  });
+
+  ipcMain.handle('apiTester:getCollections', () => {
+    return apiTester ? apiTester.getCollections() : {};
+  });
+
+  ipcMain.handle('apiTester:saveToCollection', (event, { collectionName, requestData }) => {
+    return apiTester ? apiTester.saveToCollection(collectionName, requestData) : null;
+  });
+
+  ipcMain.handle('apiTester:deleteFromCollection', (event, { collectionName, requestId }) => {
+    return apiTester ? apiTester.deleteFromCollection(collectionName, requestId) : false;
+  });
+
+  ipcMain.handle('apiTester:createCollection', (event, name) => {
+    return apiTester ? apiTester.createCollection(name) : false;
+  });
+
+  ipcMain.handle('apiTester:deleteCollection', (event, name) => {
+    return apiTester ? apiTester.deleteCollection(name) : false;
+  });
+
+  ipcMain.handle('apiTester:getEnvironment', () => {
+    return apiTester ? apiTester.getEnvironment() : {};
+  });
+
+  ipcMain.handle('apiTester:saveEnvironment', (event, env) => {
+    return apiTester ? apiTester.saveEnvironment(env) : {};
+  });
+
+  ipcMain.handle('apiTester:getSettings', () => {
+    return apiTester ? apiTester.getSettings() : {};
+  });
+
+  ipcMain.handle('apiTester:saveSettings', (event, settings) => {
+    return apiTester ? apiTester.saveSettings(settings) : {};
+  });
+
+  // Developer Toolkit - Notes
+  ipcMain.handle('notes:getWorkspaceNotes', (event, workspaceId) => {
+    return notesManager ? notesManager.getWorkspaceNotes(workspaceId) : [];
+  });
+
+  ipcMain.handle('notes:saveNote', (event, { workspaceId, note }) => {
+    return notesManager ? notesManager.saveNote(workspaceId, note) : null;
+  });
+
+  ipcMain.handle('notes:deleteNote', (event, { workspaceId, noteId }) => {
+    return notesManager ? notesManager.deleteNote(workspaceId, noteId) : false;
+  });
+
+  ipcMain.handle('notes:exportNote', async (event, { title, content }) => {
+    return notesManager ? await notesManager.exportNote(mainWindow, title, content) : { success: false };
+  });
+
+  ipcMain.handle('tab:getSelectedText', async () => {
+    if (!tabManager) return '';
+    const activeTab = tabManager.getTab(tabManager.activeTabId);
+    if (!activeTab || !activeTab.view || !activeTab.view.webContents) return '';
+    try {
+      return await activeTab.view.webContents.executeJavaScript('window.getSelection().toString()');
+    } catch (e) {
+      return '';
+    }
+  });
+
+  // GPU Feature & Hardware Acceleration Diagnostic (browser://gpu)
+  ipcMain.handle('gpu:getInfo', async () => {
+    const { app } = require('electron');
+    let info = {};
+    try {
+      info = await app.getGPUInfo('complete');
+    } catch (e) {
+      info = { error: e.message };
+    }
+    return {
+      status: app.getGPUFeatureStatus(),
+      info,
+    };
   });
 }
 
