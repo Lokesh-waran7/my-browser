@@ -50,6 +50,7 @@ function createWindow() {
   apiTester = new ApiTester();
   notesManager = new NotesManager();
   aiManager = new AIManager(mainWindow, tabManager, workspaceManager);
+  aiManager.init();
 
   tabManager.tabSuspender = tabSuspender;
   splitManager.tabSuspender = tabSuspender;

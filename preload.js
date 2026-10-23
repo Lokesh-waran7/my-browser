@@ -74,7 +74,7 @@ contextBridge.exposeInMainWorld('browserAPI', {
   getGpuInfo: () => ipcRenderer.invoke('gpu:getInfo'),
 
   // AI Assistant (Step 8)
-  getAiSettings: () => ipcRenderer.invoke('ai:getSettings'),
+  getAiSettings: (forceRefresh) => ipcRenderer.invoke('ai:getSettings', forceRefresh),
   updateAiSettings: (settings) => ipcRenderer.invoke('ai:updateSettings', settings),
   testAiConnection: (options) => ipcRenderer.invoke('ai:testConnection', options),
   getAiHistory: (workspaceId) => ipcRenderer.invoke('ai:getHistory', workspaceId),
@@ -122,6 +122,9 @@ contextBridge.exposeInMainWorld('browserAPI', {
   },
   onAiAskSelection: (callback) => {
     ipcRenderer.on('ai:askSelection', (e, data) => callback(data));
+  },
+  onAiModelNotice: (callback) => {
+    ipcRenderer.on('ai:modelNotice', (e, data) => callback(data));
   },
 });
 

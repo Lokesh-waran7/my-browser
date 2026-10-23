@@ -2490,6 +2490,52 @@ body.toolkit-resizing .toolkit-resizer {
   font-size: 12px;
 }
 
+.ai-notice-banner {
+  background-color: rgba(59, 130, 246, 0.15);
+  border: 1px solid #3b82f6;
+  color: #93c5fd;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  margin: 6px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-error-details {
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.ai-error-details-summary {
+  cursor: pointer;
+  color: #94a3b8;
+  user-select: none;
+  font-weight: 500;
+  outline: none;
+}
+
+.ai-error-details-summary:hover {
+  color: #cbd5e1;
+  text-decoration: underline;
+}
+
+.ai-error-details-raw {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background-color: #09090b;
+  border: 1px solid #27272a;
+  border-radius: 4px;
+  color: #f87171;
+  font-family: monospace;
+  font-size: 10.5px;
+  max-height: 140px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 /* Chat Input Area */
 .ai-chat-form {
   padding: 10px;

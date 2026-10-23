@@ -206,7 +206,16 @@
       if (window.browserAPI.onAiStreamError) {
         window.browserAPI.onAiStreamError((data) => {
           if (data && data.streamId === this.currentStreamId) {
-            this.handleStreamError(data.error);
+            this.handleStreamError(data.error, data.details);
+          }
+        });
+      }
+
+      // Model retired or switched notification listener
+      if (window.browserAPI.onAiModelNotice) {
+        window.browserAPI.onAiModelNotice((data) => {
+          if (data && data.newModel) {
+            this.handleModelNotice(data);
           }
         });
       }
@@ -222,13 +231,13 @@
     /**
      * Loads settings from the main process.
      */
-    async loadSettings() {
+    async loadSettings(forceRefresh = false) {
       try {
-        const settings = await window.browserAPI.getAiSettings();
+        const settings = await window.browserAPI.getAiSettings(forceRefresh);
         if (settings) {
           this.settings = settings;
           if (this.modelBadge) {
-            this.modelBadge.textContent = settings.model || 'gemini-2.5-flash';
+            this.modelBadge.textContent = settings.model || 'No model';
           }
           this.populateSettingsModal();
         }
@@ -262,16 +271,23 @@
         this.encryptionStatus.className = 'ai-encryption-badge unencrypted';
       }
 
-      // Populate model options
-      if (this.modelSelect && this.settings.availableModels) {
+      // Populate model options dynamically
+      if (this.modelSelect) {
         this.modelSelect.innerHTML = '';
-        this.settings.availableModels.forEach((m) => {
+        if (this.settings.availableModels && this.settings.availableModels.length > 0) {
+          this.settings.availableModels.forEach((m) => {
+            const opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = m.name;
+            if (m.id === this.settings.model) opt.selected = true;
+            this.modelSelect.appendChild(opt);
+          });
+        } else {
           const opt = document.createElement('option');
-          opt.value = m.id;
-          opt.textContent = m.name;
-          if (m.id === this.settings.model) opt.selected = true;
+          opt.value = '';
+          opt.textContent = this.settings.hasKey ? 'Loading available models...' : 'Enter API key to load models';
           this.modelSelect.appendChild(opt);
-        });
+        }
       }
 
       // Populate Never Share domains
@@ -320,7 +336,7 @@
 
     async saveSettingsFromModal() {
       const newKey = (this.apiKeyInput.value || '').trim();
-      const selectedModel = this.modelSelect ? this.modelSelect.value : 'gemini-2.5-flash';
+      const selectedModel = this.modelSelect ? this.modelSelect.value : (this.settings && this.settings.model) || '';
 
       const updatePayload = {
         model: selectedModel,
@@ -336,7 +352,7 @@
         this.apiKeyInput.value = '';
         this.populateSettingsModal();
         if (this.modelBadge) {
-          this.modelBadge.textContent = updated.model;
+          this.modelBadge.textContent = updated.model || 'No model';
         }
       }
       this.closeSettingsModal();
@@ -344,7 +360,7 @@
 
     async testConnection() {
       const tempKey = (this.apiKeyInput.value || '').trim();
-      const selectedModel = this.modelSelect ? this.modelSelect.value : 'gemini-2.5-flash';
+      const selectedModel = this.modelSelect ? this.modelSelect.value : (this.settings && this.settings.model) || '';
 
       this.showTestStatus('Testing connection to Gemini API...', 'loading');
       this.btnTestConnection.disabled = true;
@@ -352,32 +368,50 @@
       try {
         const result = await window.browserAPI.testAiConnection({
           apiKey: tempKey || undefined,
-          model: selectedModel,
+          model: selectedModel || undefined,
         });
 
         if (result && result.success) {
           this.showTestStatus(result.message || 'Connection successful!', 'success');
         } else {
-          this.showTestStatus(result.message || 'Connection failed.', 'error');
+          this.showTestStatus(result.message || 'Connection failed.', 'error', result.details);
         }
       } catch (err) {
-        this.showTestStatus(`Error: ${err.message}`, 'error');
+        this.showTestStatus(`Error: ${err.message}`, 'error', err.stack);
       } finally {
         this.btnTestConnection.disabled = false;
       }
     }
 
-    showTestStatus(message, type) {
+    showTestStatus(message, type, details) {
       if (!this.testStatusBanner) return;
       this.testStatusBanner.className = `ai-test-status-banner ${type}`;
-      this.testStatusBanner.textContent = message;
+      let detailsHtml = '';
+      if (details) {
+        detailsHtml = `
+          <details class="ai-error-details">
+            <summary class="ai-error-details-summary">Details</summary>
+            <pre class="ai-error-details-raw">${escapeHtml(details)}</pre>
+          </details>
+        `;
+      }
+      this.testStatusBanner.innerHTML = `<div>${escapeHtml(message)}</div>${detailsHtml}`;
       this.testStatusBanner.classList.remove('hidden');
     }
 
-    openSettingsModal() {
-      this.populateSettingsModal();
+    async openSettingsModal() {
       if (this.testStatusBanner) {
         this.testStatusBanner.classList.add('hidden');
+      }
+      if (this.deps.showOverlay) {
+        this.deps.showOverlay(this.settingsModal);
+      } else {
+        this.settingsModal.classList.remove('hidden');
+      }
+      this.apiKeyInput.focus();
+      // Dynamically load fresh models on opening settings
+      await this.loadSettings(true);
+    }
       }
       if (this.deps.showOverlay) {
         this.deps.showOverlay(this.settingsModal);
@@ -733,21 +767,58 @@
     }
 
     /**
-     * Handles streaming errors.
+     * Handles streaming errors with user-friendly messages and expandable details toggle.
      */
-    handleStreamError(errorMsg) {
+    handleStreamError(errorMsg, details) {
       this.isGenerating = false;
       this.btnSend.classList.remove('hidden');
       this.btnStop.classList.add('hidden');
 
       if (this.streamingBodyEl) {
+        let detailsHtml = '';
+        if (details) {
+          detailsHtml = `
+            <details class="ai-error-details">
+              <summary class="ai-error-details-summary">Details</summary>
+              <pre class="ai-error-details-raw">${escapeHtml(details)}</pre>
+            </details>
+          `;
+        }
         this.streamingBodyEl.innerHTML = `
           <div class="ai-error-box">
-            ⚠️ <strong>Error:</strong> ${escapeHtml(errorMsg || 'Failed to generate response.')}
+            <div class="ai-error-summary">⚠️ <strong>Error:</strong> ${escapeHtml(errorMsg || 'Failed to generate response.')}</div>
+            ${detailsHtml}
           </div>
         `;
       }
       this.scrollToBottom();
+    }
+
+    /**
+     * Handles notifications when a model is retired and automatically switched.
+     */
+    handleModelNotice(data) {
+      if (!data) return;
+
+      if (data.newModel) {
+        if (this.modelBadge) {
+          this.modelBadge.textContent = data.newModel;
+        }
+        if (this.settings) {
+          this.settings.model = data.newModel;
+        }
+        if (this.modelSelect) {
+          this.modelSelect.value = data.newModel;
+        }
+      }
+
+      if (this.chatMessages && data.message) {
+        const noticeEl = document.createElement('div');
+        noticeEl.className = 'ai-notice-banner';
+        noticeEl.innerHTML = `<span>ℹ️ <strong>Model update:</strong> ${escapeHtml(data.message)}</span>`;
+        this.chatMessages.appendChild(noticeEl);
+        this.scrollToBottom();
+      }
     }
 
     /**

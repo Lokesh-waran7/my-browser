@@ -341,8 +341,8 @@ function setupIpcHandlers(
   });
 
   // AI Assistant (Step 8)
-  ipcMain.handle('ai:getSettings', () => {
-    return aiManager ? aiManager.getPublicSettings() : null;
+  ipcMain.handle('ai:getSettings', async (event, forceRefresh) => {
+    return aiManager ? await aiManager.getPublicSettings(forceRefresh) : null;
   });
 
   ipcMain.handle('ai:updateSettings', (event, settings) => {
