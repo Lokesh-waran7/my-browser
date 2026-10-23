@@ -165,14 +165,24 @@ class TabManager {
   /**
    * Creates a new tab. If isSuspended is true, the tab is initialized without a WebContentsView.
    */
-  createTab(initialUrl = 'https://duckduckgo.com', activate = true, isLazy = false, isSuspended = false) {
-    const tabId = `tab-${++this.tabCounter}`;
+  createTab(initialUrl = 'https://duckduckgo.com', activate = true, isLazy = false, isSuspended = false, options = {}) {
+    let tabId = options.id;
+    if (tabId) {
+      if (typeof tabId === 'string' && tabId.startsWith('tab-')) {
+        const num = parseInt(tabId.replace('tab-', ''), 10);
+        if (!isNaN(num) && num > this.tabCounter) {
+          this.tabCounter = num;
+        }
+      }
+    } else {
+      tabId = `tab-${++this.tabCounter}`;
+    }
 
     const tab = {
       id: tabId,
       url: initialUrl,
-      title: 'New Tab',
-      favicon: null,
+      title: options.title || 'New Tab',
+      favicon: options.favicon || null,
       isLoading: false,
       canGoBack: false,
       canGoForward: false,
@@ -180,9 +190,9 @@ class TabManager {
       isLazy: !!isLazy,
       isSuspended: !!isSuspended,
       suspendedAt: isSuspended ? Date.now() : null,
-      scrollPosition: { x: 0, y: 0 },
+      scrollPosition: options.scrollPosition || { x: 0, y: 0 },
       lastActiveTime: Date.now(),
-      workspaceId: null,
+      workspaceId: options.workspaceId || null,
       view: null,
     };
 
@@ -197,6 +207,26 @@ class TabManager {
     }
 
     return tab;
+  }
+
+  /**
+   * Safety net: ensures that an active tab has an alive WebContentsView instance and is not suspended.
+   */
+  ensureActiveTabView(tabId) {
+    const tab = this.getTab(tabId);
+    if (!tab) return;
+    const isMissingOrDestroyed = !tab.view || !tab.view.webContents || tab.view.webContents.isDestroyed();
+    if (isMissingOrDestroyed || tab.isSuspended) {
+      console.log(`[SafetyNet] ensureActiveTabView: recreating missing/destroyed view for tab: ${tabId} (${tab.url})`);
+      if (this.tabSuspender) {
+        this.tabSuspender.unsuspendTab(tabId);
+      } else {
+        this.setupTabView(tab, tab.url);
+        tab.isSuspended = false;
+        tab.isLazy = false;
+        if (this.onTabUpdated) this.onTabUpdated(tab);
+      }
+    }
   }
 
   getTab(tabId) {

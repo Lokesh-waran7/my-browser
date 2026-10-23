@@ -35,6 +35,7 @@ function setupIpcHandlers(
   });
 
   ipcMain.handle('tab:switch', (event, tabId) => {
+    console.log(`[TabSwitch] Switching to tab: ${tabId}`);
     if (tabSuspender) {
       tabSuspender.unsuspendTab(tabId);
     }
@@ -45,6 +46,9 @@ function setupIpcHandlers(
       if (activeWs) activeWs.activeTabId = tabId;
       workspaceManager.scheduleSave();
     }
+
+    // Safety net: ensure active tab has alive WebContentsView
+    tabManager.ensureActiveTabView(tabId);
 
     if (splitManager.isSplit) {
       if (splitManager.leftTabId === tabId || splitManager.rightTabId === tabId) {

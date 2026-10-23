@@ -116,8 +116,16 @@ class TabSuspender {
     // 1. Already suspended
     if (tab.isSuspended) return false;
 
-    // 2. Never suspend the active tab
+    // 2. Never suspend the active tab of the current focused workspace
     if (tab.id === this.tabManager.activeTabId) return false;
+
+    // 2b. Never suspend the active tab of ANY workspace
+    if (this.workspaceManager && Array.isArray(this.workspaceManager.workspaces)) {
+      const isAnyWorkspaceActiveTab = this.workspaceManager.workspaces.some(
+        (ws) => ws.activeTabId === tabId
+      );
+      if (isAnyWorkspaceActiveTab) return false;
+    }
 
     // 3. Never suspend tabs visible in split view
     if (this.splitManager && this.splitManager.isSplit) {
@@ -231,14 +239,17 @@ class TabSuspender {
    */
   unsuspendTab(tabId) {
     const tab = this.tabManager.getTab(tabId);
-    if (!tab || !tab.isSuspended) return;
+    if (!tab) return;
+    const isMissingOrDestroyed = !tab.view || !tab.view.webContents || tab.view.webContents.isDestroyed();
+    if (!tab.isSuspended && !isMissingOrDestroyed) return;
 
-    console.log(`[TabSuspender] Unsuspending tab: ${tab.id} ("${tab.title}")`);
+    console.log(`[TabSuspender] Unsuspending tab: ${tab.id} ("${tab.title}", url: ${tab.url})`);
 
     // Recreate WebContentsView and rebind handlers
     this.tabManager.setupTabView(tab, tab.url);
 
     tab.isSuspended = false;
+    tab.isLazy = false;
     tab.suspendedAt = null;
     tab.lastActiveTime = Date.now();
 
@@ -255,6 +266,10 @@ class TabSuspender {
 
     if (this.tabManager.onTabUpdated) {
       this.tabManager.onTabUpdated(tab);
+    }
+
+    if (this.splitManager) {
+      this.splitManager.applyLayout();
     }
 
     if (this.workspaceManager) {
@@ -291,6 +306,12 @@ class TabSuspender {
 
     for (const tab of tabs) {
       if (!tab.isSuspended && tab.id !== this.tabManager.activeTabId) {
+        // Double check not active tab in any workspace
+        if (this.workspaceManager && Array.isArray(this.workspaceManager.workspaces)) {
+          const isAnyActive = this.workspaceManager.workspaces.some((ws) => ws.activeTabId === tab.id);
+          if (isAnyActive) continue;
+        }
+
         const lastActive = tab.lastActiveTime || now;
         if (now - lastActive >= timeoutMs) {
           await this.suspendTab(tab.id);

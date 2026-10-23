@@ -67,6 +67,8 @@ class WorkspaceManager {
     const activeWs = this.getActiveWorkspace();
     if (!activeWs) return;
 
+    console.log(`[WorkspaceRestore] Starting restore across ${this.workspaces.length} workspaces. Active workspace: ${activeWs.id} (${activeWs.name})`);
+
     // Set split manager state to active workspace's state
     if (activeWs.splitState) {
       this.splitManager.isSplit = !!activeWs.splitState.isSplit;
@@ -80,42 +82,75 @@ class WorkspaceManager {
       const isCurrentWs = ws.id === this.activeWorkspaceId;
       const validTabIds = [];
 
-      // If workspace has stored serialized tabs
-      const savedTabs = ws._savedTabs || [];
-      savedTabs.forEach((savedTab) => {
+      // Clean up already saved empty New Tab entries & duplicate IDs
+      const rawSavedTabs = ws._savedTabs || [];
+      const seenIds = new Set();
+      const cleanedSavedTabs = [];
+
+      for (const st of rawSavedTabs) {
+        if (!st || !st.id) continue;
+        if (seenIds.has(st.id)) {
+          console.log(`[WorkspaceRestore] Removing duplicate tab ID ${st.id} in workspace "${ws.name}"`);
+          continue;
+        }
+
+        const rawUrl = (st.url || '').trim();
+        const isEmpty = !rawUrl || rawUrl === 'about:blank';
+        // Clean up empty New Tab entries if workspace has more than 1 tab
+        if (isEmpty && rawSavedTabs.length > 1) {
+          console.log(`[WorkspaceRestore] Cleaning up saved empty New Tab placeholder: ${st.id} in "${ws.name}"`);
+          continue;
+        }
+
+        seenIds.add(st.id);
+        cleanedSavedTabs.push({
+          ...st,
+          url: isEmpty ? 'https://duckduckgo.com' : rawUrl,
+        });
+      }
+
+      // Ensure ws.activeTabId is valid among cleaned tabs
+      if (cleanedSavedTabs.length > 0 && !cleanedSavedTabs.some((t) => t.id === ws.activeTabId)) {
+        ws.activeTabId = cleanedSavedTabs[0].id;
+      }
+
+      cleanedSavedTabs.forEach((savedTab) => {
         // Only load web page immediately if it is active in the current workspace
         const shouldLoadNow = isCurrentWs && (
           savedTab.id === ws.activeTabId ||
-          (ws.splitState && (savedTab.id === ws.splitState.leftTabId || savedTab.id === ws.splitState.rightTabId))
+          (ws.splitState && ws.splitState.isSplit && (savedTab.id === ws.splitState.leftTabId || savedTab.id === ws.splitState.rightTabId))
         );
 
-        const isSuspended = !shouldLoadNow || !!savedTab.isSuspended;
+        // Check 1: Active tab must NEVER be restored in suspended state
+        const isSuspended = shouldLoadNow ? false : !!savedTab.isSuspended;
+
         const tab = this.tabManager.createTab(
           savedTab.url || 'https://duckduckgo.com',
           shouldLoadNow,
           !shouldLoadNow,
-          isSuspended
+          isSuspended,
+          {
+            id: savedTab.id,
+            workspaceId: ws.id,
+            title: savedTab.title || 'DuckDuckGo',
+            favicon: savedTab.favicon || null,
+            scrollPosition: savedTab.scrollPosition || { x: 0, y: 0 },
+          }
         );
 
-        // Preserve metadata
-        tab.id = savedTab.id || tab.id;
-        tab.workspaceId = ws.id;
-        tab.title = savedTab.title || 'New Tab';
-        tab.favicon = savedTab.favicon || null;
-        tab.isLazy = !shouldLoadNow;
-        tab.isSuspended = isSuspended;
-        tab.scrollPosition = savedTab.scrollPosition || { x: 0, y: 0 };
-
-        this.tabManager.tabs.set(tab.id, tab);
         validTabIds.push(tab.id);
+        console.log(`[WorkspaceRestore] Restored tab: ${tab.id} (url: ${tab.url}, ws: "${ws.name}", shouldLoadNow: ${shouldLoadNow}, isSuspended: ${tab.isSuspended})`);
       });
 
-      // If workspace had no valid tabs, create one
+      // If workspace had no valid tabs, create one clean tab
       if (validTabIds.length === 0) {
-        const tab = this.tabManager.createTab('https://duckduckgo.com', isCurrentWs, !isCurrentWs);
-        tab.workspaceId = ws.id;
+        const tab = this.tabManager.createTab('https://duckduckgo.com', isCurrentWs, !isCurrentWs, false, {
+          workspaceId: ws.id,
+          title: 'DuckDuckGo',
+        });
         validTabIds.push(tab.id);
         ws.activeTabId = tab.id;
+        console.log(`[WorkspaceRestore] Created fresh tab for empty workspace "${ws.name}": ${tab.id}`);
       }
 
       ws.tabIds = validTabIds;
@@ -128,6 +163,13 @@ class WorkspaceManager {
     }
     this.tabManager.activeTabId = activeWs.activeTabId;
     this.splitManager.setFocusedTab(activeWs.activeTabId);
+
+    // Safety net: ensure active tab has a healthy WebContentsView
+    this.tabManager.ensureActiveTabView(activeWs.activeTabId);
+
+    // Initial layout application
+    this.splitManager.applyLayout();
+    console.log(`[WorkspaceRestore] Workspace restore complete. Active tab: ${this.tabManager.activeTabId}`);
   }
 
   /**
@@ -144,6 +186,8 @@ class WorkspaceManager {
     if (this.activeWorkspaceId === workspaceId) return;
     const targetWs = this.workspaces.find((w) => w.id === workspaceId);
     if (!targetWs) return;
+
+    console.log(`[WorkspaceSwitch] Switching from workspace "${this.activeWorkspaceId}" to "${workspaceId}" (${targetWs.name})`);
 
     // 1. Save current workspace's state
     const currentWs = this.getActiveWorkspace();
@@ -168,17 +212,20 @@ class WorkspaceManager {
       this.splitManager.isPickingRight = false;
     }
 
-    // 4. Activate target tab and awaken if lazy
+    // 4. Activate target tab and awaken if lazy or suspended
     const targetTabId = targetWs.activeTabId || targetWs.tabIds[0];
     this.tabManager.activeTabId = targetTabId;
     this.splitManager.setFocusedTab(targetTabId);
 
-    // Awaken lazy tab(s) in target workspace
+    // Awaken target tab(s)
     this.awakenTabIfNeeded(targetTabId);
     if (this.splitManager.isSplit) {
       if (this.splitManager.leftTabId) this.awakenTabIfNeeded(this.splitManager.leftTabId);
       if (this.splitManager.rightTabId) this.awakenTabIfNeeded(this.splitManager.rightTabId);
     }
+
+    // Safety net: ensure active tab view is created, attached, and sized
+    this.tabManager.ensureActiveTabView(targetTabId);
 
     // 5. Update layout and broadcast
     this.splitManager.applyLayout();
@@ -192,11 +239,17 @@ class WorkspaceManager {
   awakenTabIfNeeded(tabId) {
     const tab = this.tabManager.getTab(tabId);
     if (!tab) return;
-    if (tab.isSuspended) {
+    const isMissingOrDestroyed = !tab.view || !tab.view.webContents || tab.view.webContents.isDestroyed();
+    console.log(`[TabWake] Awaken tab if needed: ${tab.id} (url: ${tab.url}, isSuspended: ${tab.isSuspended}, missingView: ${isMissingOrDestroyed})`);
+
+    if (tab.isSuspended || isMissingOrDestroyed) {
       if (this.tabSuspender) {
         this.tabSuspender.unsuspendTab(tabId);
       } else {
         this.tabManager.setupTabView(tab, tab.url);
+        tab.isSuspended = false;
+        tab.isLazy = false;
+        if (this.tabManager.onTabUpdated) this.tabManager.onTabUpdated(tab);
       }
     } else if (tab.isLazy) {
       tab.isLazy = false;
@@ -423,26 +476,56 @@ class WorkspaceManager {
             ? this.splitManager.getState()
             : ws.splitState;
 
+          const currentActiveTabId = ws.id === this.activeWorkspaceId
+            ? (this.splitManager.focusedTabId || this.tabManager.activeTabId)
+            : ws.activeTabId;
+
+          const seenIds = new Set();
+          const validTabs = [];
+
+          for (const id of ws.tabIds) {
+            if (seenIds.has(id)) continue;
+            const t = this.tabManager.getTab(id);
+            if (!t) continue;
+
+            const url = (t.url || '').trim();
+            const isEmpty = !url || url === 'about:blank';
+            // Do not persist empty New Tab entries if the workspace has other tabs
+            if (isEmpty && ws.tabIds.length > 1) {
+              continue;
+            }
+
+            seenIds.add(id);
+
+            // Active tab of active workspace should never be saved as suspended
+            const isSuspended = (ws.id === this.activeWorkspaceId && id === currentActiveTabId)
+              ? false
+              : !!t.isSuspended;
+
+            validTabs.push({
+              id: t.id,
+              url: isEmpty ? 'https://duckduckgo.com' : t.url,
+              title: t.title || 'New Tab',
+              favicon: t.favicon,
+              isSuspended,
+              scrollPosition: t.scrollPosition || { x: 0, y: 0 },
+            });
+          }
+
+          // Ensure activeTabId references an existing tab
+          let resolvedActiveTabId = currentActiveTabId;
+          if (!validTabs.some((t) => t.id === resolvedActiveTabId)) {
+            resolvedActiveTabId = validTabs[0] ? validTabs[0].id : null;
+          }
+
           return {
             id: ws.id,
             name: ws.name,
             color: ws.color,
             icon: ws.icon,
-            activeTabId: ws.id === this.activeWorkspaceId
-              ? (this.splitManager.focusedTabId || this.tabManager.activeTabId)
-              : ws.activeTabId,
+            activeTabId: resolvedActiveTabId,
             splitState: splitState,
-            tabs: ws.tabIds
-              .map((id) => this.tabManager.getTab(id))
-              .filter(Boolean)
-              .map((t) => ({
-                id: t.id,
-                url: t.url,
-                title: t.title,
-                favicon: t.favicon,
-                isSuspended: !!t.isSuspended,
-                scrollPosition: t.scrollPosition || { x: 0, y: 0 },
-              })),
+            tabs: validTabs,
           };
         }),
       };

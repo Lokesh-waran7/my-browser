@@ -171,9 +171,20 @@ class SplitManager {
 
       allTabs.forEach((tab) => {
         if (tab.id === activeTabId) {
-          if (tab.isSuspended && this.tabSuspender) {
-            this.tabSuspender.unsuspendTab(tab.id);
+          // Check 5 Safety Net: if view is missing, destroyed, or tab is suspended, recreate and awaken
+          const isMissingOrDestroyed = !tab.view || !tab.view.webContents || tab.view.webContents.isDestroyed();
+          if (isMissingOrDestroyed || tab.isSuspended) {
+            console.log(`[SafetyNet] Active tab ${tab.id} view missing/destroyed/suspended, recreating...`);
+            if (this.tabSuspender) {
+              this.tabSuspender.unsuspendTab(tab.id);
+            } else {
+              this.tabManager.setupTabView(tab, tab.url);
+              tab.isSuspended = false;
+              tab.isLazy = false;
+              if (this.tabManager.onTabUpdated) this.tabManager.onTabUpdated(tab);
+            }
           }
+
           if (tab.view) {
             if (!contentView.children.includes(tab.view)) {
               contentView.addChildView(tab.view);
@@ -181,12 +192,20 @@ class SplitManager {
             tab.view.setVisible(true);
 
             const b = this.layoutBounds.viewArea;
-            tab.view.setBounds({
-              x: Math.round(b.x),
-              y: Math.round(b.y),
-              width: Math.max(0, Math.round(b.width)),
-              height: Math.max(0, Math.round(b.height)),
-            });
+            const winBounds = this.mainWindow.getBounds();
+            const width = (b && b.width > 0) ? Math.round(b.width) : Math.max(100, winBounds.width - 220);
+            const height = (b && b.height > 0) ? Math.round(b.height) : Math.max(100, winBounds.height - 48);
+            const x = (b && b.width > 0) ? Math.round(b.x) : 220;
+            const y = (b && b.height > 0) ? Math.round(b.y) : 48;
+
+            tab.view.setBounds({ x, y, width, height });
+
+            // Zero-size bounds safety net
+            const actualBounds = tab.view.getBounds();
+            if (actualBounds.width === 0 || actualBounds.height === 0) {
+              console.log(`[SafetyNet] Active tab ${tab.id} view had zero bounds, applying fallback layout`);
+              tab.view.setBounds({ x: 220, y: 48, width: 800, height: 600 });
+            }
           }
         } else {
           if (tab.view) {
@@ -216,8 +235,17 @@ class SplitManager {
 
       // Left pane view
       if (leftTab) {
-        if (leftTab.isSuspended && this.tabSuspender) {
-          this.tabSuspender.unsuspendTab(leftTab.id);
+        const isLeftMissingOrDestroyed = !leftTab.view || !leftTab.view.webContents || leftTab.view.webContents.isDestroyed();
+        if (isLeftMissingOrDestroyed || leftTab.isSuspended) {
+          console.log(`[SafetyNet] Left split tab ${leftTab.id} view missing/destroyed/suspended, recreating...`);
+          if (this.tabSuspender) {
+            this.tabSuspender.unsuspendTab(leftTab.id);
+          } else {
+            this.tabManager.setupTabView(leftTab, leftTab.url);
+            leftTab.isSuspended = false;
+            leftTab.isLazy = false;
+            if (this.tabManager.onTabUpdated) this.tabManager.onTabUpdated(leftTab);
+          }
         }
         if (leftTab.view) {
           if (!contentView.children.includes(leftTab.view)) {
@@ -226,19 +254,35 @@ class SplitManager {
           leftTab.view.setVisible(true);
 
           const lb = this.layoutBounds.leftPane;
-          leftTab.view.setBounds({
-            x: Math.round(lb.x),
-            y: Math.round(lb.y),
-            width: Math.max(0, Math.round(lb.width)),
-            height: Math.max(0, Math.round(lb.height)),
-          });
+          const winBounds = this.mainWindow.getBounds();
+          const width = (lb && lb.width > 0) ? Math.round(lb.width) : Math.max(100, Math.floor((winBounds.width - 220) / 2));
+          const height = (lb && lb.height > 0) ? Math.round(lb.height) : Math.max(100, winBounds.height - 76);
+          const x = (lb && lb.width > 0) ? Math.round(lb.x) : 220;
+          const y = (lb && lb.height > 0) ? Math.round(lb.y) : 76;
+
+          leftTab.view.setBounds({ x, y, width, height });
+
+          const actualBounds = leftTab.view.getBounds();
+          if (actualBounds.width === 0 || actualBounds.height === 0) {
+            console.log(`[SafetyNet] Left tab ${leftTab.id} view had zero bounds, applying fallback layout`);
+            leftTab.view.setBounds({ x: 220, y: 76, width: 400, height: 600 });
+          }
         }
       }
 
       // Right pane view (only if picked; otherwise DOM picker stays visible)
       if (rightTab && !this.isPickingRight) {
-        if (rightTab.isSuspended && this.tabSuspender) {
-          this.tabSuspender.unsuspendTab(rightTab.id);
+        const isRightMissingOrDestroyed = !rightTab.view || !rightTab.view.webContents || rightTab.view.webContents.isDestroyed();
+        if (isRightMissingOrDestroyed || rightTab.isSuspended) {
+          console.log(`[SafetyNet] Right split tab ${rightTab.id} view missing/destroyed/suspended, recreating...`);
+          if (this.tabSuspender) {
+            this.tabSuspender.unsuspendTab(rightTab.id);
+          } else {
+            this.tabManager.setupTabView(rightTab, rightTab.url);
+            rightTab.isSuspended = false;
+            rightTab.isLazy = false;
+            if (this.tabManager.onTabUpdated) this.tabManager.onTabUpdated(rightTab);
+          }
         }
         if (rightTab.view) {
           if (!contentView.children.includes(rightTab.view)) {
@@ -247,12 +291,19 @@ class SplitManager {
           rightTab.view.setVisible(true);
 
           const rb = this.layoutBounds.rightPane;
-          rightTab.view.setBounds({
-            x: Math.round(rb.x),
-            y: Math.round(rb.y),
-            width: Math.max(0, Math.round(rb.width)),
-            height: Math.max(0, Math.round(rb.height)),
-          });
+          const winBounds = this.mainWindow.getBounds();
+          const width = (rb && rb.width > 0) ? Math.round(rb.width) : Math.max(100, Math.floor((winBounds.width - 220) / 2));
+          const height = (rb && rb.height > 0) ? Math.round(rb.height) : Math.max(100, winBounds.height - 76);
+          const x = (rb && rb.width > 0) ? Math.round(rb.x) : Math.floor(winBounds.width / 2);
+          const y = (rb && rb.height > 0) ? Math.round(rb.y) : 76;
+
+          rightTab.view.setBounds({ x, y, width, height });
+
+          const actualBounds = rightTab.view.getBounds();
+          if (actualBounds.width === 0 || actualBounds.height === 0) {
+            console.log(`[SafetyNet] Right tab ${rightTab.id} view had zero bounds, applying fallback layout`);
+            rightTab.view.setBounds({ x: 620, y: 76, width: 400, height: 600 });
+          }
         }
       } else if (rightTab && rightTab.view) {
         rightTab.view.setVisible(false);

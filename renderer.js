@@ -1136,9 +1136,15 @@ window.addEventListener('resize', () => {
 });
 
 // IPC Event Listeners from Main Process
-window.browserAPI.onWorkspaceStateChanged((state) => {
+window.browserAPI.onWorkspaceStateChanged(async (state) => {
   workspaces = state.workspaces || [];
   activeWorkspaceId = state.activeWorkspaceId || (workspaces[0] ? workspaces[0].id : null);
+  try {
+    const allTabs = await window.browserAPI.getAllTabs();
+    if (Array.isArray(allTabs) && allTabs.length > 0) {
+      tabs = allTabs;
+    }
+  } catch (e) {}
   renderWorkspaceSwitcher();
   renderSidebarTabs();
   updateToolbar();
