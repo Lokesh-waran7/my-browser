@@ -1,5 +1,6 @@
 // IPC Handlers - Bridges UI renderer commands with main process managers
 const { ipcMain } = require('electron');
+const logger = require('./logger');
 
 function setupIpcHandlers(
   mainWindow,
@@ -362,8 +363,13 @@ function setupIpcHandlers(
   });
 
   ipcMain.handle('ai:sendMessage', async (event, options) => {
-    if (!aiManager) throw new Error('AI Manager is not initialized.');
-    return await aiManager.sendMessage(options);
+    try {
+      if (!aiManager) throw new Error('AI Manager is not initialized.');
+      return await aiManager.sendMessage(options);
+    } catch (err) {
+      logger.log('IPC:ai:sendMessage', err);
+      throw err;
+    }
   });
 
   ipcMain.handle('ai:stopStream', (event, streamId) => {
@@ -372,6 +378,17 @@ function setupIpcHandlers(
 
   ipcMain.handle('ai:extractPage', async () => {
     return aiManager ? await aiManager.extractActivePage() : { allowed: false, reason: 'AI Manager not available.' };
+  });
+
+  // Diagnostics and DevTools
+  ipcMain.handle('window:openDevTools', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
+    }
+  });
+
+  ipcMain.handle('app:logRendererError', (event, errorInfo) => {
+    logger.log('Renderer', errorInfo);
   });
 }
 

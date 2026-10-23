@@ -17,6 +17,15 @@ const ApiTester = require('./src/main/apiTester');
 const NotesManager = require('./src/main/notesManager');
 const AIManager = require('./src/main/ai/aiManager');
 const setupIpcHandlers = require('./src/main/ipcHandlers');
+const logger = require('./src/main/logger');
+
+// Global handlers in the main process for uncaught exceptions and unhandled rejections
+process.on('uncaughtException', (err) => {
+  logger.log('Main:uncaughtException', err);
+});
+process.on('unhandledRejection', (reason) => {
+  logger.log('Main:unhandledRejection', reason);
+});
 
 let mainWindow = null;
 let tabManager = null;
@@ -37,7 +46,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      sandbox: false,
     },
     title: 'Coder Browser',
   });
@@ -156,6 +165,18 @@ function createWindow() {
   );
 
   mainWindow.loadFile('index.html');
+
+  // Window crash / render-process-gone logging
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    logger.log('MainWindow:render-process-gone', new Error(`Render process gone: ${JSON.stringify(details)}`));
+  });
+
+  // Shortcut (Ctrl+Alt+I): Open DevTools for browser UI window's own renderer
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.control && input.alt && (input.key === 'i' || input.key === 'I')) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' });
+    }
+  });
 
   // Relayout on window resize
   mainWindow.on('resize', () => {

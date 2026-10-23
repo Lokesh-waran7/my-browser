@@ -231,7 +231,7 @@
             <div id="ai-chat-messages" class="ai-chat-messages"></div>
 
             <!-- Chat Input Area -->
-            <form id="ai-chat-form" class="ai-chat-form">
+            <form id="ai-chat-form" class="ai-chat-form" onsubmit="return false;">
               <div class="ai-chat-input-box">
                 <textarea 
                   id="ai-chat-input" 
@@ -243,7 +243,7 @@
                   <button type="button" id="btn-ai-attach-page" class="ai-attach-btn" title="Attach active page context">📎 Attach Page</button>
                   <div class="ai-submit-group">
                     <button type="button" id="btn-ai-stop" class="toolkit-btn danger small hidden">⏹ Stop</button>
-                    <button type="submit" id="btn-ai-send" class="toolkit-btn primary small">Send</button>
+                    <button type="button" id="btn-ai-send" class="toolkit-btn primary small">Send</button>
                   </div>
                 </div>
               </div>

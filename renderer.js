@@ -1,5 +1,32 @@
 // Coder Browser - Step 4: Workspaces, Split View & Tabs Management
 
+// Global error & unhandledrejection handlers for browser UI renderer
+window.addEventListener('error', (event) => {
+  const errorInfo = {
+    message: event.message,
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+    stack: event.error && event.error.stack ? event.error.stack : `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`,
+  };
+  console.error('[Renderer Error]', errorInfo);
+  if (window.browserAPI && window.browserAPI.logError) {
+    window.browserAPI.logError(errorInfo);
+  }
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason;
+  const errorInfo = {
+    message: reason ? (reason.message || String(reason)) : 'Unhandled rejection',
+    stack: reason && reason.stack ? reason.stack : String(reason),
+  };
+  console.error('[Renderer UnhandledRejection]', errorInfo);
+  if (window.browserAPI && window.browserAPI.logError) {
+    window.browserAPI.logError(errorInfo);
+  }
+});
+
 // DOM Elements: Sidebar & Workspaces
 const sidebar = document.getElementById('sidebar');
 const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
@@ -1141,6 +1168,11 @@ window.addEventListener('keydown', (e) => {
     if (targetTab) {
       window.browserAPI.openDevTools(targetTab.id);
     }
+  }
+  // Ctrl+Alt+I: Open DevTools for browser UI window's own renderer
+  else if (isCtrlOrCmd && e.altKey && e.key.toLowerCase() === 'i') {
+    e.preventDefault();
+    window.browserAPI.openWindowDevTools();
   }
 });
 

@@ -82,6 +82,8 @@ contextBridge.exposeInMainWorld('browserAPI', {
   sendAiMessage: (options) => ipcRenderer.invoke('ai:sendMessage', options),
   stopAiStream: (streamId) => ipcRenderer.invoke('ai:stopStream', streamId),
   extractAiPageContent: () => ipcRenderer.invoke('ai:extractPage'),
+  openWindowDevTools: () => ipcRenderer.invoke('window:openDevTools'),
+  logError: (errorInfo) => ipcRenderer.invoke('app:logRendererError', errorInfo),
 
   // Event Subscriptions
   onTabCreated: (callback) => {

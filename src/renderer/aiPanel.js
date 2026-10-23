@@ -70,6 +70,14 @@
         });
       }
 
+      // Send Button click
+      if (this.btnSend) {
+        this.btnSend.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.sendMessage();
+        });
+      }
+
       // Enter to send, Shift+Enter for newline
       if (this.chatInput) {
         this.chatInput.addEventListener('keydown', (e) => {
@@ -412,14 +420,6 @@
       // Dynamically load fresh models on opening settings
       await this.loadSettings(true);
     }
-      }
-      if (this.deps.showOverlay) {
-        this.deps.showOverlay(this.settingsModal);
-      } else {
-        this.settingsModal.classList.remove('hidden');
-      }
-      this.apiKeyInput.focus();
-    }
 
     closeSettingsModal() {
       if (this.deps.hideOverlay) {
@@ -668,65 +668,71 @@
 
     /**
      * Submits a user message and triggers streaming response.
+     * Wrapped in try/catch so any failure shows an error message inside the chat bubble.
      */
     async sendMessage() {
-      const prompt = (this.chatInput.value || '').trim();
-      if (!prompt || this.isGenerating) return;
-
-      // Check if API key is configured
-      if (!this.settings || !this.settings.hasKey) {
-        alert('Please configure your Gemini API key in settings (⚙️) to use the AI assistant.');
-        this.openSettingsModal();
-        return;
-      }
-
-      const wsId = this.activeWorkspaceId || (this.deps.getActiveWorkspaceId ? this.deps.getActiveWorkspaceId() : 'ws-default');
-      const pageContext = this.pendingPageContext;
-
-      // 1. Render user message bubble
-      const userMsg = {
-        id: `msg-${Date.now()}-u`,
-        role: 'user',
-        content: prompt,
-        timestamp: Date.now(),
-        pageContext: pageContext ? { title: pageContext.title, url: pageContext.url } : null,
-      };
-      this.appendMessageBubble(userMsg);
-
-      // Reset input & context bar
-      this.chatInput.value = '';
-      this.chatInput.style.height = '38px';
-      this.clearPendingPageContext();
-
-      // 2. Prepare streaming assistant bubble
-      this.isGenerating = true;
-      this.currentStreamId = `stream-${Date.now()}`;
-      this.currentStreamingText = '';
-
-      this.btnSend.classList.add('hidden');
-      this.btnStop.classList.remove('hidden');
-
-      const assistantMsg = {
-        id: `msg-${Date.now()}-a`,
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now(),
-      };
-      this.streamingBubbleEl = this.appendMessageBubble(assistantMsg);
-      this.streamingBodyEl = this.streamingBubbleEl.querySelector('.ai-message-body');
-      this.streamingBodyEl.innerHTML = '<span class="ai-streaming-cursor">▋</span>';
-      this.scrollToBottom();
-
-      // 3. Send IPC request to main process
       try {
-        await window.browserAPI.sendAiMessage({
-          workspaceId: wsId,
-          prompt,
-          pageContext,
-          streamId: this.currentStreamId,
-        });
-      } catch (err) {
-        this.handleStreamError(err.message);
+        const prompt = (this.chatInput.value || '').trim();
+        if (!prompt || this.isGenerating) return;
+
+        // Check if API key is configured
+        if (!this.settings || !this.settings.hasKey) {
+          alert('Please configure your Gemini API key in settings (⚙️) to use the AI assistant.');
+          this.openSettingsModal();
+          return;
+        }
+
+        const wsId = this.activeWorkspaceId || (this.deps.getActiveWorkspaceId ? this.deps.getActiveWorkspaceId() : 'ws-default');
+        const pageContext = this.pendingPageContext;
+
+        // 1. Render user message bubble
+        const userMsg = {
+          id: `msg-${Date.now()}-u`,
+          role: 'user',
+          content: prompt,
+          timestamp: Date.now(),
+          pageContext: pageContext ? { title: pageContext.title, url: pageContext.url } : null,
+        };
+        this.appendMessageBubble(userMsg);
+
+        // Reset input & context bar
+        this.chatInput.value = '';
+        this.chatInput.style.height = '38px';
+        this.clearPendingPageContext();
+
+        // 2. Prepare streaming assistant bubble
+        this.isGenerating = true;
+        this.currentStreamId = `stream-${Date.now()}`;
+        this.currentStreamingText = '';
+
+        this.btnSend.classList.add('hidden');
+        this.btnStop.classList.remove('hidden');
+
+        const assistantMsg = {
+          id: `msg-${Date.now()}-a`,
+          role: 'assistant',
+          content: '',
+          timestamp: Date.now(),
+        };
+        this.streamingBubbleEl = this.appendMessageBubble(assistantMsg);
+        this.streamingBodyEl = this.streamingBubbleEl.querySelector('.ai-message-body');
+        this.streamingBodyEl.innerHTML = '<span class="ai-streaming-cursor">▋</span>';
+        this.scrollToBottom();
+
+        // 3. Send IPC request to main process
+        try {
+          await window.browserAPI.sendAiMessage({
+            workspaceId: wsId,
+            prompt,
+            pageContext,
+            streamId: this.currentStreamId,
+          });
+        } catch (err) {
+          this.handleStreamError(err.message, err.stack);
+        }
+      } catch (outerErr) {
+        console.error('[aiPanel] Uncaught error in sendMessage:', outerErr);
+        this.handleStreamError(outerErr.message || 'An unexpected error occurred while sending.', outerErr.stack);
       }
     }
 
