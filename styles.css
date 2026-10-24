@@ -3593,3 +3593,253 @@ body.toolkit-resizing .toolkit-resizer {
   gap: 6px;
 }
 
+/* ==========================================================================
+   Step 10: Unified Settings & First-Run Onboarding (Part B)
+   ========================================================================== */
+
+/* Unified Settings Card */
+.unified-settings-card {
+  width: 860px;
+  max-width: 95vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.unified-settings-container {
+  display: flex;
+  flex: 1;
+  min-height: 480px;
+  max-height: 580px;
+  overflow: hidden;
+}
+
+.unified-settings-sidebar {
+  width: 210px;
+  background-color: #121214;
+  border-right: 1px solid #27272a;
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.settings-tab-btn {
+  background: none;
+  border: none;
+  color: #a1a1aa;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-tab-btn:hover {
+  background-color: #1f1f23;
+  color: #f4f4f5;
+}
+
+.settings-tab-btn.active {
+  background-color: #27272a;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.unified-settings-content {
+  flex: 1;
+  padding: 16px 24px;
+  overflow-y: auto;
+  background-color: #09090b;
+}
+
+.settings-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-pane h4 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f4f4f5;
+  border-bottom: 1px solid #27272a;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+}
+
+.settings-permissions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  background-color: #121214;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.perm-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background-color: #18181b;
+  font-size: 12px;
+}
+
+.settings-workspaces-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ws-setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: #121214;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.ws-setting-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 8px;
+  display: inline-block;
+}
+
+/* Shortcuts Table */
+.shortcuts-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+}
+
+.shortcuts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.shortcuts-table th {
+  background-color: #121214;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #27272a;
+  color: #a1a1aa;
+}
+
+.shortcuts-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #1f1f23;
+  color: #e4e4e7;
+}
+
+.shortcuts-table tr:last-child td {
+  border-bottom: none;
+}
+
+kbd {
+  background-color: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+}
+
+/* Welcome Modal (First Run Onboarding) */
+.welcome-card {
+  max-width: 540px;
+  padding: 28px;
+}
+
+.welcome-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.welcome-rocket {
+  font-size: 42px;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.welcome-header h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 6px;
+}
+
+.welcome-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.welcome-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.welcome-privacy-radios {
+  display: flex;
+  gap: 10px;
+}
+
+.privacy-option-card {
+  flex: 1;
+  background-color: #121214;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 10px;
+  display: flex;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.privacy-option-card:hover {
+  border-color: #3b82f6;
+}
+
+.privacy-option-card input[type="radio"] {
+  margin-top: 3px;
+  accent-color: #3b82f6;
+}
+
+.privacy-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.privacy-option-text strong {
+  font-size: 12px;
+  color: #f4f4f5;
+}
+
+.privacy-option-text span {
+  font-size: 11px;
+  color: #71717a;
+  line-height: 1.4;
+}
+
+

@@ -106,11 +106,15 @@ class TabManager {
       }
     });
 
-    // Error logging and proxy kill switch handling
+    // Error logging, custom error pages, and proxy kill switch handling
     wc.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
       console.log(`[did-fail-load] Tab: ${tabId}, Code: ${errorCode}, Description: ${errorDescription}, URL: ${validatedURL}, MainFrame: ${isMainFrame}`);
       if (this.proxyManager && isMainFrame) {
         this.proxyManager.handleProxyFailure(tab, errorCode, errorDescription, validatedURL);
+      }
+      if (isMainFrame && errorCode !== -3 && validatedURL && !validatedURL.startsWith('data:text/html')) {
+        const errorHtml = generateErrorPageHtml(errorCode, errorDescription, validatedURL);
+        wc.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(errorHtml)).catch(() => {});
       }
     });
 
@@ -455,6 +459,136 @@ class TabManager {
       tab.view.webContents.openDevTools({ mode: 'detach' });
     }
   }
+}
+
+function generateErrorPageHtml(errorCode, errorDescription, validatedURL) {
+  let title = 'Unable to Load Page';
+  let message = 'This page could not be loaded.';
+  let icon = '⚠️';
+
+  if (errorCode === -106 || (errorDescription && errorDescription.includes('INTERNET_DISCONNECTED'))) {
+    title = 'No Internet Connection';
+    message = 'Your computer appears to be offline. Please check your network connection, Wi-Fi, or proxy settings.';
+    icon = '📡';
+  } else if (errorCode === -105 || (errorDescription && errorDescription.includes('NAME_NOT_RESOLVED'))) {
+    title = 'Server Not Found';
+    message = 'The server address could not be resolved. Please check the spelling of the web address or your DNS settings.';
+    icon = '🔍';
+  } else if (errorCode === -102 || (errorDescription && errorDescription.includes('CONNECTION_REFUSED'))) {
+    title = 'Connection Refused';
+    message = 'The target server refused the connection. The service might be temporarily unavailable or blocked by a firewall.';
+    icon = '🚫';
+  } else if (errorCode === -118 || (errorDescription && errorDescription.includes('TIMED_OUT'))) {
+    title = 'Connection Timed Out';
+    message = 'The server took too long to respond. The website might be overloaded or undergoing maintenance.';
+    icon = '⏱️';
+  } else if (errorCode <= -200 && errorCode >= -299) {
+    title = 'Security Certificate Error';
+    message = 'The site presented an invalid or untrusted security certificate. Attackers may be attempting to intercept your traffic.';
+    icon = '🔒';
+  }
+
+  const safeUrl = (validatedURL || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const safeDesc = (errorDescription || 'Load Failed').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title} - Coder Browser</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #09090b;
+      color: #f4f4f5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .card {
+      background-color: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 12px;
+      padding: 36px;
+      max-width: 540px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    }
+    .icon { font-size: 48px; margin-bottom: 16px; }
+    h1 { font-size: 22px; font-weight: 600; margin-bottom: 12px; color: #ffffff; }
+    p { font-size: 14px; line-height: 1.6; color: #a1a1aa; margin-bottom: 20px; }
+    .url-box {
+      background-color: #09090b;
+      border: 1px solid #27272a;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #93c5fd;
+      word-break: break-all;
+      margin-bottom: 20px;
+    }
+    .badge-row {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+    .badge {
+      background-color: #27272a;
+      color: #71717a;
+      font-size: 11px;
+      font-family: monospace;
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+    .badge.offline {
+      background-color: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+    }
+    .btn-retry {
+      background-color: #3b82f6;
+      color: #ffffff;
+      border: none;
+      padding: 10px 24px;
+      font-size: 14px;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.15s;
+    }
+    .btn-retry:hover { background-color: #2563eb; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">${icon}</div>
+    <h1>${title}</h1>
+    <p>${message}</p>
+    <div class="url-box">${safeUrl}</div>
+    <div class="badge-row">
+      <span class="badge">Error ${errorCode}: ${safeDesc}</span>
+      <span id="offline-badge" class="badge offline" style="display: none;">OFFLINE</span>
+    </div>
+    <button class="btn-retry" onclick="location.href='${safeUrl}'">Try Again</button>
+  </div>
+  <script>
+    if (!navigator.onLine) {
+      document.getElementById('offline-badge').style.display = 'inline-block';
+    }
+    window.addEventListener('online', () => {
+      document.getElementById('offline-badge').style.display = 'none';
+    });
+    window.addEventListener('offline', () => {
+      document.getElementById('offline-badge').style.display = 'inline-block';
+    });
+  </script>
+</body>
+</html>`;
 }
 
 module.exports = TabManager;

@@ -1081,11 +1081,272 @@
     </div>
   </div>
 
+  <!-- Unified Browser Settings Modal (browser://settings) -->
+  <div id="unified-settings-modal" class="modal-backdrop hidden">
+    <div class="modal-card unified-settings-card">
+      <div class="modal-header">
+        <div class="internal-title-row">
+          <span class="internal-icon">⚙️</span>
+          <div>
+            <h3>Settings</h3>
+            <span class="text-xs text-muted">Configure browser behavior, privacy, performance, and developer tools.</span>
+          </div>
+        </div>
+        <button id="btn-close-unified-settings" class="modal-close-btn">&times;</button>
+      </div>
+
+      <div class="unified-settings-container">
+        <!-- Sidebar Navigation Tabs -->
+        <div class="unified-settings-sidebar">
+          <button class="settings-tab-btn active" data-tab="general">⚙️ General</button>
+          <button class="settings-tab-btn" data-tab="privacy">🛡️ Privacy & Security</button>
+          <button class="settings-tab-btn" data-tab="performance">⚡ Performance</button>
+          <button class="settings-tab-btn" data-tab="workspaces">🗂️ Workspaces</button>
+          <button class="settings-tab-btn" data-tab="ai">✨ AI Assistant</button>
+          <button class="settings-tab-btn" data-tab="developer">🛠️ Developer</button>
+          <button class="settings-tab-btn" data-tab="shortcuts">⌨️ Shortcuts</button>
+        </div>
+
+        <!-- Content Panes -->
+        <div class="unified-settings-content">
+          <!-- General Pane -->
+          <div id="settings-pane-general" class="settings-pane">
+            <h4>General Preferences</h4>
+            <div class="settings-group">
+              <label class="settings-label">Default Search Engine</label>
+              <select id="setting-search-engine" class="modal-select">
+                <option value="duckduckgo">DuckDuckGo (Privacy-first)</option>
+                <option value="google">Google</option>
+                <option value="bing">Bing</option>
+                <option value="brave">Brave Search</option>
+                <option value="ecosia">Ecosia</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label class="settings-label">Downloads Location</label>
+              <div class="flex-row gap-2">
+                <input type="text" id="setting-download-path" class="modal-input" readonly />
+                <button type="button" id="btn-change-download-path" class="toolkit-btn secondary small">Change...</button>
+              </div>
+              <div class="proxy-checkbox-row mt-2">
+                <input type="checkbox" id="setting-ask-save" />
+                <label for="setting-ask-save">Ask where to save each file before downloading</label>
+              </div>
+            </div>
+            <div class="settings-group">
+              <label class="settings-label">Startup & Tabs</label>
+              <div class="proxy-checkbox-row">
+                <input type="checkbox" id="setting-restore-session" />
+                <label for="setting-restore-session">Restore last open tabs and workspaces on startup</label>
+              </div>
+              <div class="mt-2">
+                <label class="text-xs text-muted">New tab position:</label>
+                <select id="setting-new-tab-pos" class="modal-select mt-1">
+                  <option value="after-current">Open next to current tab</option>
+                  <option value="at-end">Open at the end of tab list</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Privacy & Security Pane -->
+          <div id="settings-pane-privacy" class="settings-pane hidden">
+            <h4>Privacy & Security</h4>
+            <div class="settings-group">
+              <label class="settings-label">Ad & Tracker Blocking</label>
+              <div class="proxy-checkbox-row">
+                <input type="checkbox" id="setting-adblock-toggle" checked />
+                <label for="setting-adblock-toggle">Enable network blocking and tracker prevention</label>
+              </div>
+            </div>
+            <div class="settings-group">
+              <label class="settings-label">Proxy & Privacy Routing</label>
+              <p class="text-xs text-muted">Route browser traffic through encrypted HTTPS or SOCKS5 proxies.</p>
+              <div class="mt-2">
+                <button type="button" id="btn-settings-open-proxy" class="toolkit-btn secondary small">Configure Proxy & Profiles...</button>
+              </div>
+            </div>
+            <div class="settings-group">
+              <div class="flex-between">
+                <label class="settings-label">Site Permissions</label>
+                <button type="button" id="btn-reset-all-perms" class="toolkit-btn secondary small text-danger">Reset All</button>
+              </div>
+              <p class="text-xs text-muted mb-2">Camera, microphone, location, and notification permissions.</p>
+              <div id="settings-permissions-list" class="settings-permissions-list"></div>
+            </div>
+            <div class="settings-group">
+              <label class="settings-label">Browsing Data</label>
+              <button type="button" id="btn-settings-clear-data" class="toolkit-btn danger small">Clear Browsing History & Cache</button>
+            </div>
+          </div>
+
+          <!-- Performance Pane -->
+          <div id="settings-pane-performance" class="settings-pane hidden">
+            <h4>Performance & Memory</h4>
+            <div class="settings-group">
+              <label class="settings-label">Tab Suspension</label>
+              <div class="proxy-checkbox-row">
+                <input type="checkbox" id="setting-suspender-toggle" checked />
+                <label for="setting-suspender-toggle">Automatically suspend background tabs to free RAM</label>
+              </div>
+              <div class="modal-field mt-2">
+                <label class="text-xs text-muted">Idle timeout (minutes):</label>
+                <input type="number" id="setting-suspender-minutes" class="modal-input" min="1" max="1440" value="10" />
+              </div>
+              <div class="mt-2">
+                <button type="button" id="btn-settings-suspend-now" class="toolkit-btn secondary small">Suspend Background Tabs Now</button>
+              </div>
+            </div>
+            <div class="settings-group">
+              <label class="settings-label">Diagnostics</label>
+              <div class="flex-row gap-2 mt-1">
+                <button type="button" id="btn-settings-open-memory" class="toolkit-btn secondary small">Open Memory Dashboard (browser://memory)</button>
+                <button type="button" id="btn-settings-open-gpu" class="toolkit-btn secondary small">Open GPU Status (browser://gpu)</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Workspaces Pane -->
+          <div id="settings-pane-workspaces" class="settings-pane hidden">
+            <div class="flex-between">
+              <h4>Workspaces</h4>
+              <button type="button" id="btn-settings-new-workspace" class="toolkit-btn primary small">+ New Workspace</button>
+            </div>
+            <p class="text-xs text-muted mb-2">Isolate tabs, cookies, and contexts across projects.</p>
+            <div id="settings-workspaces-list" class="settings-workspaces-list"></div>
+          </div>
+
+          <!-- AI Pane -->
+          <div id="settings-pane-ai" class="settings-pane hidden">
+            <h4>AI Assistant (Gemini)</h4>
+            <p class="text-xs text-muted">Main-process encrypted AI assistant for summarization, code explanation, and Q&A.</p>
+            <div class="mt-3">
+              <button type="button" id="btn-settings-open-ai" class="toolkit-btn secondary small">Open Gemini API & Model Settings...</button>
+            </div>
+          </div>
+
+          <!-- Developer Pane -->
+          <div id="settings-pane-developer" class="settings-pane hidden">
+            <h4>Developer Options</h4>
+            <div class="settings-group">
+              <label class="settings-label">User-Agent Override</label>
+              <input type="text" id="setting-custom-ua" class="modal-input" placeholder="(Default browser user agent)" />
+              <p class="text-xs text-muted mt-1">Override navigator.userAgent for testing responsive/mobile rendering.</p>
+            </div>
+            <div class="settings-group">
+              <label class="settings-label">Network Cache</label>
+              <div class="proxy-checkbox-row">
+                <input type="checkbox" id="setting-disable-cache" />
+                <label for="setting-disable-cache">Disable network cache (useful during web development)</label>
+              </div>
+            </div>
+            <div class="settings-group">
+              <label class="settings-label">DevTools Shortcuts</label>
+              <ul class="text-xs text-muted" style="line-height: 1.8; margin-left: 18px;">
+                <li><strong>Ctrl+Shift+I / F12:</strong> Open DevTools for the active web page</li>
+                <li><strong>Ctrl+Alt+I:</strong> Open DevTools for browser UI window renderer</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Shortcuts Pane -->
+          <div id="settings-pane-shortcuts" class="settings-pane hidden">
+            <h4>Keyboard Shortcuts</h4>
+            <div class="shortcuts-table-wrapper">
+              <table class="shortcuts-table">
+                <thead>
+                  <tr><th>Shortcut</th><th>Action</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>T</kbd></td><td>New Tab</td></tr>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>W</kbd></td><td>Close Active Tab</td></tr>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd></td><td>Reopen Closed Tab</td></tr>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>L</kbd></td><td>Focus Address Bar</td></tr>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>Tab</kbd> / <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Tab</kbd></td><td>Cycle Next / Previous Tab</td></tr>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>1..9</kbd></td><td>Switch to Workspace 1 through 9</td></tr>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd></td><td>New Workspace</td></tr>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd></td><td>Toggle Split View</td></tr>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd></td><td>Toggle Developer Toolkit / AI Assistant</td></tr>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>F</kbd></td><td>Find in Page</td></tr>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>P</kbd></td><td>Print Page</td></tr>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd></td><td>Zoom In / Out / Reset (100%)</td></tr>
+                  <tr><td><kbd>F11</kbd></td><td>Toggle Fullscreen</td></tr>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>I</kbd> / <kbd>F12</kbd></td><td>Inspect Page DevTools</td></tr>
+                  <tr><td><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>I</kbd></td><td>Inspect Browser Shell DevTools</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="btn-done-unified-settings" class="modal-btn primary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- First-Run Onboarding Modal -->
+  <div id="welcome-modal" class="modal-backdrop hidden">
+    <div class="modal-card welcome-card">
+      <div class="welcome-header">
+        <span class="welcome-rocket">🚀</span>
+        <h2>Welcome to Coder Browser</h2>
+        <p class="text-sm text-muted">The fast, privacy-focused browser built for developers.</p>
+      </div>
+      <div class="welcome-body">
+        <div class="welcome-section">
+          <label class="settings-label">1. Choose your default search engine:</label>
+          <select id="welcome-search-engine" class="modal-select">
+            <option value="duckduckgo" selected>DuckDuckGo (Privacy-first, tracker-free)</option>
+            <option value="google">Google</option>
+            <option value="bing">Bing</option>
+            <option value="brave">Brave Search</option>
+            <option value="ecosia">Ecosia</option>
+          </select>
+        </div>
+
+        <div class="welcome-section">
+          <label class="settings-label">2. Import bookmarks (optional):</label>
+          <div class="flex-row gap-2">
+            <button type="button" id="btn-welcome-import" class="toolkit-btn secondary small">Import from HTML file...</button>
+            <input type="file" id="welcome-file-input" accept=".html,.htm" class="hidden" />
+            <span id="welcome-import-status" class="text-xs text-muted">No file chosen</span>
+          </div>
+        </div>
+
+        <div class="welcome-section">
+          <label class="settings-label">3. Privacy Protection Level:</label>
+          <div class="welcome-privacy-radios">
+            <label class="privacy-option-card active">
+              <input type="radio" name="welcome-privacy" value="standard" checked />
+              <div class="privacy-option-text">
+                <strong>Standard Protection</strong>
+                <span>Block third-party ads, cryptominers, and trackers.</span>
+              </div>
+            </label>
+            <label class="privacy-option-card">
+              <input type="radio" name="welcome-privacy" value="strict" />
+              <div class="privacy-option-text">
+                <strong>Strict Protection</strong>
+                <span>Block all trackers, disable WebRTC IP leakage, and strict sandbox.</span>
+              </div>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="welcome-actions">
+        <button type="button" id="btn-welcome-get-started" class="modal-btn primary w-full">Get Started</button>
+      </div>
+    </div>
+  </div>
+
   <script src="src/renderer/jsonViewer.js"></script>
   <script src="src/renderer/toolkitPanel.js"></script>
   <script src="src/renderer/aiPanel.js"></script>
   <script src="src/renderer/proxyControl.js"></script>
   <script src="src/renderer/essentialsControl.js"></script>
+  <script src="src/renderer/settingsControl.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

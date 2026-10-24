@@ -169,6 +169,25 @@ if (window.EssentialsControl) {
   window.essentialsControl = essentialsControl;
 }
 
+// Unified Settings Controller (Step 10 Part B: browser://settings and first-run welcome)
+let settingsControl = null;
+if (window.SettingsControl) {
+  settingsControl = new window.SettingsControl({
+    getTargetTab: () => getTargetTab(),
+    getWorkspaces: () => workspaces,
+    showOverlay: (el) => showOverlay(el),
+    hideOverlay: (el) => hideOverlay(el),
+    navigate: (url) => {
+      const targetTab = getTargetTab();
+      if (targetTab) {
+        window.browserAPI.navigate(targetTab.id, normalizeUrl(url));
+      }
+    },
+  });
+  window.settingsControl = settingsControl;
+  settingsControl.checkFirstRun();
+}
+
 // Browser Settings Cache for Search Engine & Essentials
 let browserSettings = { defaultSearchEngine: 'duckduckgo' };
 if (window.browserAPI && window.browserAPI.getSettings) {
@@ -1148,8 +1167,7 @@ urlForm.addEventListener('submit', (e) => {
     return;
   }
   if (inputVal === 'browser://settings') {
-    // Open settings modal (or proxy / general settings)
-    if (proxyControl) proxyControl.openSettingsModal();
+    if (settingsControl) settingsControl.openSettingsModal('general');
     return;
   }
   const targetTab = getTargetTab();
@@ -1300,6 +1318,10 @@ window.addEventListener('keydown', (e) => {
       essentialsControl.closeDownloadsModal();
       essentialsControl.closeFindBar();
       essentialsControl.hideSuggestions();
+    }
+    if (settingsControl) {
+      settingsControl.closeSettingsModal();
+      settingsControl.closeWelcomeModal();
     }
     hideContextMenus();
   }

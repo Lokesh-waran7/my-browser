@@ -21,6 +21,9 @@ class SettingsManager {
       adBlockEnabled: true,
       tabSuspenderEnabled: true,
       tabSuspenderIdleMinutes: 10,
+      firstRunDone: false,
+      customUserAgent: '',
+      disableCache: false,
     };
     this.loadSettings();
   }
@@ -65,6 +68,9 @@ class SettingsManager {
       'adBlockEnabled',
       'tabSuspenderEnabled',
       'tabSuspenderIdleMinutes',
+      'firstRunDone',
+      'customUserAgent',
+      'disableCache',
     ];
 
     for (const key of allowedKeys) {
