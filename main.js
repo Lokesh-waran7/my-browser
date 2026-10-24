@@ -58,6 +58,27 @@ function createWindow() {
     title: 'Coder Browser',
   });
 
+  // Security Hardening: Block top-level navigation of browser UI window away from index.html
+  mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    try {
+      const parsed = new URL(navigationUrl);
+      if (parsed.protocol !== 'file:' || !parsed.pathname.endsWith('index.html')) {
+        console.warn('[Security] Blocked top-level UI window navigation to:', navigationUrl);
+        event.preventDefault();
+      }
+    } catch (_) {
+      event.preventDefault();
+    }
+  });
+
+  // Security Hardening: Handle window.open from UI window safely
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (tabManager && url && !url.startsWith('file://')) {
+      tabManager.createTab(url, true);
+    }
+    return { action: 'deny' };
+  });
+
   // Initialize modular managers
   tabManager = new TabManager(mainWindow);
   splitManager = new SplitManager(mainWindow, tabManager);

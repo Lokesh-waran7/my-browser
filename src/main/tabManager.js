@@ -142,13 +142,31 @@ class TabManager {
     });
 
     // Target="_blank" / window.open
+    // Security: Block web pages from opening file:// URLs
     wc.setWindowOpenHandler(({ url }) => {
+      if (url && url.startsWith('file://')) {
+        console.warn('[Security] Blocked page window.open to file:// URL:', url);
+        return { action: 'deny' };
+      }
       if (this.onNewWindow) {
         this.onNewWindow(url);
       } else {
         this.createTab(url, true);
       }
       return { action: 'deny' };
+    });
+
+    // Security: Prevent remote web pages from navigating to local file:// scheme
+    wc.on('will-navigate', (event, navigationUrl) => {
+      const currentUrl = tab.url || '';
+      if (
+        navigationUrl &&
+        navigationUrl.startsWith('file://') &&
+        (currentUrl.startsWith('http://') || currentUrl.startsWith('https://'))
+      ) {
+        console.warn('[Security] Blocked remote web page from navigating to local file:// URL:', navigationUrl);
+        event.preventDefault();
+      }
     });
 
     // Page crashes

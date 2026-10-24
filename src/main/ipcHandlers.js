@@ -2,6 +2,25 @@
 const { ipcMain } = require('electron');
 const logger = require('./logger');
 
+// Security Input Sanitization Helpers (Step 10 Part C)
+function sanitizeString(val, maxLength = 2048) {
+  if (typeof val !== 'string') return '';
+  return val.trim().slice(0, maxLength);
+}
+
+function sanitizeUrl(url) {
+  if (typeof url !== 'string') return 'https://duckduckgo.com';
+  const trimmed = url.trim();
+  if (trimmed.length > 4096) return 'https://duckduckgo.com';
+  return trimmed;
+}
+
+function sanitizeNumber(val, min = -Infinity, max = Infinity, fallback = 0) {
+  const num = Number(val);
+  if (isNaN(num)) return fallback;
+  return Math.max(min, Math.min(max, num));
+}
+
 function setupIpcHandlers(
   mainWindow,
   tabManager,
@@ -24,7 +43,8 @@ function setupIpcHandlers(
   } = additionalManagers;
   // Tab Management
   ipcMain.handle('tab:create', (event, url, activate) => {
-    const tab = tabManager.createTab(url, activate !== false);
+    const safeUrl = sanitizeUrl(url);
+    const tab = tabManager.createTab(safeUrl, activate !== false);
     if (workspaceManager) {
       tab.workspaceId = workspaceManager.activeWorkspaceId;
       workspaceManager.registerTab(tab.id);
@@ -87,7 +107,8 @@ function setupIpcHandlers(
   });
 
   ipcMain.handle('tab:navigate', (event, { tabId, url }) => {
-    tabManager.navigate(tabId, url);
+    const safeUrl = sanitizeUrl(url);
+    tabManager.navigate(tabId, safeUrl);
     if (workspaceManager) workspaceManager.scheduleSave();
     return true;
   });
@@ -575,7 +596,8 @@ function setupIpcHandlers(
   });
 
   ipcMain.handle('tabs:findInPage', (event, tabId, text, forward = true) => {
-    return tabManager.findInPage(tabId, text, forward);
+    const safeText = sanitizeString(text, 500);
+    return tabManager.findInPage(tabId, safeText, !!forward);
   });
 
   ipcMain.handle('tabs:stopFindInPage', (event, tabId, action = 'clearSelection') => {
@@ -584,7 +606,8 @@ function setupIpcHandlers(
   });
 
   ipcMain.handle('tabs:setZoom', (event, tabId, factor) => {
-    return tabManager.setZoom(tabId, factor);
+    const safeFactor = sanitizeNumber(factor, 0.25, 4.0, 1.0);
+    return tabManager.setZoom(tabId, safeFactor);
   });
 
   ipcMain.handle('tabs:getZoom', (event, tabId) => {
