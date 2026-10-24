@@ -9,6 +9,9 @@
 </head>
 <body>
   <div id="app-container">
+    <!-- Hover zone to reveal hidden sidebar -->
+    <div id="sidebar-hover-zone" class="sidebar-hover-zone hidden" title="Hover to reveal sidebar"></div>
+
     <!-- Left Sidebar: Workspaces & Vertical Tabs -->
     <aside id="sidebar">
       <!-- Workspace Switcher Row -->
@@ -24,7 +27,7 @@
 
       <!-- Sidebar Tabs Header -->
       <div class="sidebar-header">
-        <button id="btn-toggle-sidebar" class="sidebar-icon-btn" title="Toggle Sidebar">
+        <button id="btn-toggle-sidebar" class="sidebar-icon-btn" title="Toggle Sidebar (Ctrl+B)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
             <line x1="9" y1="3" x2="9" y2="21"></line>
@@ -47,6 +50,25 @@
     <div id="main-content">
       <!-- Top Navigation Toolbar -->
       <nav id="nav-bar">
+        <!-- Collapsed Sidebar Controls (shown in toolbar when sidebar is hidden) -->
+        <div id="nav-collapsed-actions" class="nav-collapsed-actions hidden">
+          <button id="btn-nav-toggle-sidebar" class="nav-btn" title="Expand Sidebar (Ctrl+B)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+          </button>
+          <button id="btn-nav-new-tab" class="nav-btn" title="New Tab (Ctrl+T)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <div id="nav-workspace-switcher" class="nav-workspace-switcher" title="Active Workspace (Click to cycle)">
+            <span id="nav-ws-badge" class="nav-ws-badge">W</span>
+          </div>
+        </div>
+
         <div class="nav-controls">
           <button id="btn-back" class="nav-btn" title="Back" disabled>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -802,7 +824,7 @@
         <div class="settings-group">
           <label for="ai-model-select" class="settings-label">Gemini Model</label>
           <select id="ai-model-select" class="modal-select"></select>
-          <p class="text-xs text-muted mt-1">Automatically resolves to the newest Flash model from the API. You can override it above.</p>
+          <p class="text-xs text-muted mt-1">Defaults to Flash-Lite for fastest speed and generous free-tier quotas. You can override it above.</p>
         </div>
 
         <!-- Response Speed Section -->
@@ -814,6 +836,15 @@
             <option value="deep">🧠 Deep — Full reasoning (slowest, most thorough)</option>
           </select>
           <p class="text-xs text-muted mt-1">Controls whether the model uses reasoning/thinking tokens before answering. Fast disables thinking entirely.</p>
+        </div>
+
+        <!-- Daily Request Usage Counter (Free-tier Limit Tracker) -->
+        <div class="settings-group">
+          <label class="settings-label">Requests Today (Daily Limit Tracker)</label>
+          <div id="ai-usage-counter" class="ai-usage-counter-box">
+            <span class="text-xs text-muted">0 requests recorded today</span>
+          </div>
+          <p class="text-xs text-muted mt-1">Tracks requests per model made today so you know when you are close to daily limits (e.g. 20 RPD on Flash, 1500 RPD on Flash-Lite). Resets daily at 00:00 UTC.</p>
         </div>
 
         <!-- Test Connection Section -->

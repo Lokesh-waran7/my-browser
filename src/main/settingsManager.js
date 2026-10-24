@@ -24,6 +24,7 @@ class SettingsManager {
       firstRunDone: false,
       customUserAgent: '',
       disableCache: false,
+      sidebarState: 'expanded', // 'expanded' | 'collapsed' | 'hidden'
     };
     this.loadSettings();
   }
@@ -71,6 +72,7 @@ class SettingsManager {
       'firstRunDone',
       'customUserAgent',
       'disableCache',
+      'sidebarState',
     ];
 
     for (const key of allowedKeys) {

@@ -47,6 +47,7 @@ class AIManager {
     this.settingsFilePath = path.join(this.userDataPath, 'ai-settings.json');
     this.conversationsFilePath = path.join(this.userDataPath, 'ai-conversations.json');
     this.modelsCachePath = path.join(this.userDataPath, 'ai-models-cache.json');
+    this.usageFilePath = path.join(this.userDataPath, 'ai-usage.json');
     this.CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
     // Default settings with no hardcoded model names
@@ -54,6 +55,7 @@ class AIManager {
       provider: 'gemini',
       model: '',
       responseSpeed: 'fast', // 'fast' | 'balanced' | 'deep'
+      explicitModelSet: false,
       neverShareDomains: ['accounts.google.com', 'login.live.com', 'github.com/login', 'bank.com'],
     };
 
@@ -75,21 +77,56 @@ class AIManager {
   }
 
   /**
+   * Helper for daily request counter tracking.
+   */
+  getTodayDateString() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  getTodayUsage() {
+    const today = this.getTodayDateString();
+    try {
+      if (fs.existsSync(this.usageFilePath)) {
+        const raw = fs.readFileSync(this.usageFilePath, 'utf-8');
+        const data = JSON.parse(raw);
+        if (data && data.date === today && typeof data.requests === 'object') {
+          return data;
+        }
+      }
+    } catch (_) {}
+    return { date: today, requests: {} };
+  }
+
+  recordRequest(modelId) {
+    if (!modelId) return;
+    try {
+      const usage = this.getTodayUsage();
+      usage.requests[modelId] = (usage.requests[modelId] || 0) + 1;
+      fs.writeFileSync(this.usageFilePath, JSON.stringify(usage, null, 2), 'utf-8');
+    } catch (e) {
+      console.warn('[AIManager] Failed to record usage count:', e.message);
+    }
+  }
+
+  /**
    * Initializes models and default model selection on startup.
+   * Prioritizes Flash-Lite model for best free-tier friendliness.
    */
   async init() {
     try {
       await this.loadApiKey();
       if (this.cachedApiKey) {
         const models = await this.getAvailableModels();
-        // If no model set, or current model is not found among available models, auto-select best
         const modelExists = models.some((m) => m.id === this.settings.model);
-        if (!this.settings.model || !modelExists) {
+        const currentIsFlashLite = this.settings.model && this.settings.model.toLowerCase().includes('flash-lite');
+
+        // Default to Flash-Lite if unset, missing, or never explicitly chosen by the user
+        if (!this.settings.model || !modelExists || (!this.settings.explicitModelSet && !currentIsFlashLite)) {
           const bestModel = this.resolveBestModel(models);
           if (bestModel) {
             this.settings.model = bestModel;
             this.saveSettings();
-            console.log(`[AIManager] Auto-selected default model: ${bestModel}`);
+            console.log(`[AIManager] Auto-selected default model for free limits: ${bestModel}`);
           }
         }
       }
@@ -108,6 +145,9 @@ class AIManager {
         const data = JSON.parse(raw);
         if (data.model) {
           this.settings.model = data.model;
+        }
+        if (data.explicitModelSet !== undefined) {
+          this.settings.explicitModelSet = !!data.explicitModelSet;
         }
         if (Array.isArray(data.neverShareDomains)) this.settings.neverShareDomains = data.neverShareDomains;
         if (data.provider) this.settings.provider = data.provider;
@@ -219,7 +259,10 @@ class AIManager {
   }
 
   /**
-   * Automatically picks the best model: prefers newest in "flash" family, otherwise newest available.
+   * Automatically picks the best model:
+   * 1. Prefers Flash-Lite model (name contains "flash-lite", free-tier friendly).
+   * 2. Falls back to newest Flash model.
+   * 3. Falls back to newest general model.
    * Filters out specialized non-chat models (tts, image, transcribe, robotics).
    */
   resolveBestModel(modelsList = [], excludedModels = []) {
@@ -244,17 +287,19 @@ class AIManager {
         lower.includes('image') ||
         lower.includes('transcribe') ||
         lower.includes('robotics') ||
-        lower.includes('computer-use')
+        lower.includes('computer-use') ||
+        lower.includes('deepthink') ||
+        lower.includes('clip')
       );
     };
 
     const generalModels = valid.filter((m) => !isSpecialized(m.id));
     const pool = generalModels.length > 0 ? generalModels : valid;
 
-    // 1. Prefer newest model in the "flash" family
-    const flashModels = pool.filter((m) => m.id.toLowerCase().includes('flash'));
-    if (flashModels.length > 0) {
-      flashModels.sort((a, b) => {
+    // 1. Prefer Flash-Lite model (free-tier friendly, highest RPM/RPD)
+    const flashLiteModels = pool.filter((m) => m.id.toLowerCase().includes('flash-lite'));
+    if (flashLiteModels.length > 0) {
+      flashLiteModels.sort((a, b) => {
         const vA = this.parseModelVersion(a.id);
         const vB = this.parseModelVersion(b.id);
         if (vB !== vA) return vB - vA; // Newest version first
@@ -266,10 +311,27 @@ class AIManager {
 
         return a.id.localeCompare(b.id);
       });
+      return flashLiteModels[0].id;
+    }
+
+    // 2. Fall back to newest Flash model
+    const flashModels = pool.filter((m) => m.id.toLowerCase().includes('flash'));
+    if (flashModels.length > 0) {
+      flashModels.sort((a, b) => {
+        const vA = this.parseModelVersion(a.id);
+        const vB = this.parseModelVersion(b.id);
+        if (vB !== vA) return vB - vA; // Newest version first
+
+        const aPrev = a.id.toLowerCase().includes('preview');
+        const bPrev = b.id.toLowerCase().includes('preview');
+        if (aPrev !== bPrev) return aPrev ? 1 : -1;
+
+        return a.id.localeCompare(b.id);
+      });
       return flashModels[0].id;
     }
 
-    // 2. Otherwise, newest available model in pool
+    // 3. Otherwise, newest available model in pool
     const sorted = [...pool].sort((a, b) => {
       const vA = this.parseModelVersion(a.id);
       const vB = this.parseModelVersion(b.id);
@@ -322,21 +384,31 @@ class AIManager {
         return Array.isArray(actions) && (actions.includes('generateContent') || actions.includes('generateMessage'));
       });
 
-      // Normalize model objects
+      // Normalize model objects with free-tier friendly labeling
       const models = generateModels.map((m) => {
         const id = (m.name || '').replace(/^models\//, '');
         const displayName = m.displayName || id;
+        const isFlashLite = id.toLowerCase().includes('flash-lite');
+        const label = isFlashLite
+          ? `${displayName} (${id}) — Fastest (best free limits)`
+          : `${displayName} (${id})`;
         return {
           id,
-          name: `${displayName} (${id})`,
+          name: label,
           displayName,
           description: m.description || '',
           version: m.version || '',
+          isFlashLite,
         };
       });
 
-      // Sort models: Flash models on top sorted by version desc, then other models
+      // Sort models: Flash-Lite models first, then other Flash models, then others
       models.sort((a, b) => {
+        const aLite = a.id.toLowerCase().includes('flash-lite');
+        const bLite = b.id.toLowerCase().includes('flash-lite');
+        if (aLite && !bLite) return -1;
+        if (!aLite && bLite) return 1;
+
         const aFlash = a.id.toLowerCase().includes('flash');
         const bFlash = b.id.toLowerCase().includes('flash');
         if (aFlash && !bFlash) return -1;
@@ -403,6 +475,7 @@ class AIManager {
       responseSpeed: this.settings.responseSpeed || 'fast',
       availableModels,
       neverShareDomains: [...this.settings.neverShareDomains],
+      usageToday: this.getTodayUsage(),
     };
   }
 
@@ -412,6 +485,7 @@ class AIManager {
   async updateSettings({ model, neverShareDomains, apiKey, responseSpeed }) {
     if (model) {
       this.settings.model = model;
+      this.settings.explicitModelSet = true;
     }
     if (Array.isArray(neverShareDomains)) {
       this.settings.neverShareDomains = neverShareDomains.map((d) => d.trim().toLowerCase()).filter(Boolean);
@@ -628,6 +702,7 @@ SECURITY & ACCURACY RULES:
       }
 
       const activeModel = this.settings.model;
+      this.recordRequest(activeModel);
       const thinkingBudget = speedToThinkingBudget(this.settings.responseSpeed || 'fast');
       const provider = createAIProvider('gemini', {
         apiKey: this.cachedApiKey,
@@ -721,12 +796,21 @@ SECURITY & ACCURACY RULES:
         // Streaming error reporting with friendly message + technical details
         const errorMessage = err.message || 'An error occurred while generating response.';
         const technicalDetails = err.details || err.stack || String(err);
+        const errType = err.type || (
+          err.status === 429 ||
+          errorMessage.toLowerCase().includes('quota') ||
+          errorMessage.toLowerCase().includes('429') ||
+          errorMessage.toLowerCase().includes('resource_exhausted')
+            ? 'quota_exceeded'
+            : 'general'
+        );
 
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
           this.mainWindow.webContents.send('ai:streamError', {
             streamId,
             error: errorMessage,
             details: technicalDetails,
+            type: errType,
           });
         }
         throw err;

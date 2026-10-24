@@ -24,7 +24,7 @@ body {
   overflow: hidden;
 }
 
-/* Left Sidebar for Workspaces & Vertical Tabs */
+/* Left Sidebar for Workspaces & Vertical Tabs (3 States: Expanded, Collapsed/Icons, Hidden) */
 #sidebar {
   width: 220px;
   min-width: 180px;
@@ -34,9 +34,10 @@ body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: width 0.2s ease, min-width 0.2s ease;
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
 }
 
+/* State 2: Icons-only (Narrow) */
 #sidebar.collapsed {
   width: 48px;
   min-width: 48px;
@@ -53,6 +54,96 @@ body {
 #sidebar.collapsed .tab-item {
   justify-content: center;
   padding: 8px 0;
+}
+
+/* State 3: Hidden (slides away, hover-to-reveal overlay) */
+#sidebar.hidden-sidebar {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  border-right: none !important;
+  overflow: hidden !important;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Slide-out Overlay when hovering left edge while hidden */
+#sidebar.hidden-sidebar.overlay-open {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 1000;
+  width: 220px !important;
+  min-width: 220px !important;
+  max-width: 220px !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  border-right: 1px solid #27272a !important;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.8);
+  animation: sidebarSlideIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes sidebarSlideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Thin hover zone along screen left edge to reveal hidden sidebar */
+.sidebar-hover-zone {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 7px;
+  height: 100vh;
+  z-index: 998;
+  cursor: e-resize;
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-hover-zone:hover {
+  background-color: rgba(168, 85, 247, 0.35);
+}
+
+/* Toolbar controls for when sidebar is hidden */
+.nav-collapsed-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding-right: 6px;
+  margin-right: 4px;
+  border-right: 1px solid #27272a;
+}
+
+.nav-workspace-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.nav-ws-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background-color: #27272a;
+  color: #f4f4f5;
+  font-size: 11px;
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+
+.nav-ws-badge:hover {
+  background-color: #3f3f46;
 }
 
 /* Workspace Switcher Bar at top of Sidebar */
@@ -2527,6 +2618,71 @@ body.toolkit-resizing .toolkit-resizer {
   padding: 8px 10px;
   border-radius: 6px;
   font-size: 12px;
+}
+
+.ai-error-box.quota {
+  background-color: rgba(234, 179, 8, 0.12);
+  border: 1px solid #eab308;
+  color: #fef08a;
+}
+
+.ai-quota-action-box {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(234, 179, 8, 0.25);
+}
+
+.ai-quota-action-box p {
+  color: #d1d5db;
+  line-height: 1.4;
+}
+
+/* Daily request tracker box in Settings */
+.ai-usage-counter-box {
+  background-color: #141416;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ai-usage-total-badge {
+  font-size: 12px;
+  color: #e4e4e7;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #232326;
+}
+
+.ai-usage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.ai-usage-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: #a1a1aa;
+}
+
+.ai-usage-row.current {
+  color: #a855f7;
+  font-weight: 500;
+}
+
+.ai-usage-count {
+  background-color: #27272a;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 10px;
+  color: #f4f4f5;
 }
 
 .ai-notice-banner {

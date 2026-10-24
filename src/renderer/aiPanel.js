@@ -61,6 +61,7 @@
       this.neverShareInput = document.getElementById('ai-never-share-input');
       this.btnAddNeverShare = document.getElementById('btn-add-never-share');
       this.neverShareList = document.getElementById('ai-never-share-list');
+      this.usageCounter = document.getElementById('ai-usage-counter');
       this.btnCloseSettings = document.getElementById('btn-close-ai-settings');
       this.btnSaveSettings = document.getElementById('btn-save-ai-settings');
     }
@@ -218,7 +219,7 @@
       if (window.browserAPI.onAiStreamError) {
         window.browserAPI.onAiStreamError((data) => {
           if (data && data.streamId === this.currentStreamId) {
-            this.handleStreamError(data.error, data.details);
+            this.handleStreamError(data.error, data.details, data.type);
           }
         });
       }
@@ -308,6 +309,30 @@
       // Set response speed dropdown
       if (this.speedSelect && this.settings.responseSpeed) {
         this.speedSelect.value = this.settings.responseSpeed;
+      }
+
+      // Populate daily usage tracker (Free-tier friendly count per model)
+      if (this.usageCounter) {
+        const usage = this.settings.usageToday || { requests: {} };
+        const requests = usage.requests || {};
+        const entries = Object.entries(requests);
+        if (entries.length === 0) {
+          this.usageCounter.innerHTML = '<span class="text-xs text-muted">0 requests recorded today</span>';
+        } else {
+          const total = entries.reduce((sum, [, count]) => sum + count, 0);
+          let html = `<div class="ai-usage-total-badge"><strong>Total Today:</strong> ${total} requests</div><div class="ai-usage-list">`;
+          entries.forEach(([modelId, count]) => {
+            const isCurrent = modelId === this.settings.model;
+            html += `
+              <div class="ai-usage-row ${isCurrent ? 'current' : ''}">
+                <span class="ai-usage-model-name">${escapeHtml(modelId)}${isCurrent ? ' (active)' : ''}</span>
+                <span class="ai-usage-count">${count} req</span>
+              </div>
+            `;
+          });
+          html += '</div>';
+          this.usageCounter.innerHTML = html;
+        }
       }
     }
 
@@ -680,11 +705,22 @@
     /**
      * Submits a user message and triggers streaming response.
      * Wrapped in try/catch so any failure shows an error message inside the chat bubble.
+     * Guaranteed single request execution with synchronous deduplication locks.
      */
-    async sendMessage() {
+    async sendMessage(overridePrompt = null) {
+      const now = Date.now();
+      if (this._isSendingLock || (this._lastSubmitTime && now - this._lastSubmitTime < 350)) {
+        return;
+      }
+      this._lastSubmitTime = now;
+      this._isSendingLock = true;
+
       try {
-        const prompt = (this.chatInput.value || '').trim();
-        if (!prompt || this.isGenerating) return;
+        const prompt = (overridePrompt !== null ? overridePrompt : (this.chatInput ? this.chatInput.value : '')).trim();
+        if (!prompt) return;
+
+        // Save last prompt for retries or quota recovery
+        this.lastPrompt = prompt;
 
         // Check if API key is configured
         if (!this.settings || !this.settings.hasKey) {
@@ -698,7 +734,6 @@
           window.browserAPI.stopAiStream(this.currentStreamId);
           this._stopThinkingTimer();
           this.isGenerating = false;
-          // Leave the previous streaming bubble as-is (it will have partial text)
         }
 
         const wsId = this.activeWorkspaceId || (this.deps.getActiveWorkspaceId ? this.deps.getActiveWorkspaceId() : 'ws-default');
@@ -714,9 +749,11 @@
         };
         this.appendMessageBubble(userMsg);
 
-        // Reset input & context bar
-        this.chatInput.value = '';
-        this.chatInput.style.height = '38px';
+        // Reset input & context bar if sending from input
+        if (this.chatInput && overridePrompt === null) {
+          this.chatInput.value = '';
+          this.chatInput.style.height = '38px';
+        }
         this.clearPendingPageContext();
 
         // 2. Prepare streaming assistant bubble
@@ -753,11 +790,13 @@
             streamId: this.currentStreamId,
           });
         } catch (err) {
-          this.handleStreamError(err.message, err.stack);
+          this.handleStreamError(err.message, err.stack, err.type);
         }
       } catch (outerErr) {
         console.error('[aiPanel] Uncaught error in sendMessage:', outerErr);
         this.handleStreamError(outerErr.message || 'An unexpected error occurred while sending.', outerErr.stack);
+      } finally {
+        this._isSendingLock = false;
       }
     }
 
@@ -818,8 +857,9 @@
 
     /**
      * Handles streaming errors with user-friendly messages and expandable details toggle.
+     * On quota/429 limits, provides a one-click "Switch to Flash-Lite & Resend" action button.
      */
-    handleStreamError(errorMsg, details) {
+    handleStreamError(errorMsg, details, type) {
       this._stopThinkingTimer();
       this.isGenerating = false;
       this.btnSend.classList.remove('hidden');
@@ -835,14 +875,80 @@
             </details>
           `;
         }
+
+        const isQuota = type === 'quota_exceeded' ||
+                        (errorMsg && (
+                          errorMsg.toLowerCase().includes('quota') ||
+                          errorMsg.toLowerCase().includes('429') ||
+                          errorMsg.toLowerCase().includes('resource_exhausted')
+                        ));
+
+        let quotaButtonHtml = '';
+        if (isQuota) {
+          quotaButtonHtml = `
+            <div class="ai-quota-action-box">
+              <p class="text-xs text-muted mb-2">You reached your rate or daily request limit for this model. Switch to Flash-Lite which has higher free-tier allowances:</p>
+              <button type="button" id="btn-quota-switch-flash-lite" class="toolkit-btn primary small">
+                ⚡ Switch to Flash-Lite &amp; Resend
+              </button>
+            </div>
+          `;
+        }
+
         this.streamingBodyEl.innerHTML = `
-          <div class="ai-error-box">
-            <div class="ai-error-summary">⚠️ <strong>Error:</strong> ${escapeHtml(errorMsg || 'Failed to generate response.')}</div>
+          <div class="ai-error-box ${isQuota ? 'quota' : ''}">
+            <div class="ai-error-summary">⚠️ <strong>${isQuota ? 'Quota Limit Reached:' : 'Error:'}</strong> ${escapeHtml(errorMsg || 'Failed to generate response.')}</div>
+            ${quotaButtonHtml}
             ${detailsHtml}
           </div>
         `;
+
+        if (isQuota) {
+          const btnSwitch = this.streamingBodyEl.querySelector('#btn-quota-switch-flash-lite');
+          if (btnSwitch) {
+            btnSwitch.addEventListener('click', async () => {
+              btnSwitch.disabled = true;
+              btnSwitch.textContent = 'Switching to Flash-Lite...';
+              await this.switchToFlashLiteAndResend();
+            });
+          }
+        }
       }
       this.scrollToBottom();
+    }
+
+    /**
+     * Finds the best Flash-Lite model, updates settings, and resends the user's message.
+     */
+    async switchToFlashLiteAndResend() {
+      try {
+        let flashLiteId = null;
+        if (this.settings && Array.isArray(this.settings.availableModels)) {
+          const found = this.settings.availableModels.find((m) =>
+            m.id.toLowerCase().includes('flash-lite') && !m.id.toLowerCase().includes('tts')
+          );
+          if (found) flashLiteId = found.id;
+        }
+
+        if (!flashLiteId) {
+          flashLiteId = 'gemini-2.5-flash-lite';
+        }
+
+        const updated = await window.browserAPI.updateAiSettings({ model: flashLiteId });
+        if (updated) {
+          this.settings = updated;
+          if (this.modelBadge) this.modelBadge.textContent = updated.model;
+          if (this.modelSelect) this.modelSelect.value = updated.model;
+        }
+
+        // Resend last prompt
+        if (this.lastPrompt) {
+          await this.sendMessage(this.lastPrompt);
+        }
+      } catch (err) {
+        console.error('Failed to switch to Flash-Lite:', err);
+        alert(`Failed to switch to Flash-Lite: ${err.message}`);
+      }
     }
 
     /**

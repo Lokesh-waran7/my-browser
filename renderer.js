@@ -35,6 +35,12 @@ const workspaceList = document.getElementById('workspace-list');
 const btnNewWorkspace = document.getElementById('btn-new-workspace');
 const btnNewTab = document.getElementById('btn-new-tab');
 const tabList = document.getElementById('tab-list');
+const sidebarHoverZone = document.getElementById('sidebar-hover-zone');
+const navCollapsedActions = document.getElementById('nav-collapsed-actions');
+const btnNavToggleSidebar = document.getElementById('btn-nav-toggle-sidebar');
+const btnNavNewTab = document.getElementById('btn-nav-new-tab');
+const navWorkspaceSwitcher = document.getElementById('nav-workspace-switcher');
+const navWsBadge = document.getElementById('nav-ws-badge');
 
 // Toolbar Elements
 const btnBack = document.getElementById('btn-back');
@@ -457,6 +463,7 @@ function renderSidebarTabs() {
     const tabEl = document.createElement('div');
     tabEl.className = 'tab-item';
     tabEl.draggable = true;
+    tabEl.title = `${tab.title || 'New Tab'}${tab.isSuspended ? ' (Suspended)' : ''}`;
     if (tab.id === currentFocusedId) {
       tabEl.classList.add('active');
     }
@@ -1128,10 +1135,107 @@ btnReloadCrash.addEventListener('click', () => {
   }
 });
 
-// Toggle Sidebar collapse
-btnToggleSidebar.addEventListener('click', () => {
-  sidebar.classList.toggle('collapsed');
-  setTimeout(sendLayoutBounds, 250);
+// ── Collapsible Tab Sidebar (3 States: Expanded -> Icons-only -> Hidden) ────
+let currentSidebarState = 'expanded';
+let hoverLeaveTimeout = null;
+
+function updateNavWorkspaceBadge() {
+  if (!navWsBadge) return;
+  const activeWs = workspaces.find((w) => w.id === activeWorkspaceId);
+  if (activeWs) {
+    navWsBadge.textContent = (activeWs.name || 'W').charAt(0).toUpperCase();
+    navWsBadge.style.backgroundColor = activeWs.color || '#3b82f6';
+    if (navWorkspaceSwitcher) {
+      navWorkspaceSwitcher.title = `Active Workspace: ${activeWs.name} (Click to switch)`;
+    }
+  }
+}
+
+function setSidebarState(state) {
+  currentSidebarState = state;
+  sidebar.classList.remove('collapsed', 'hidden-sidebar', 'overlay-open');
+
+  if (state === 'collapsed') {
+    sidebar.classList.add('collapsed');
+    if (sidebarHoverZone) sidebarHoverZone.classList.add('hidden');
+    if (navCollapsedActions) navCollapsedActions.classList.add('hidden');
+  } else if (state === 'hidden') {
+    sidebar.classList.add('hidden-sidebar');
+    if (sidebarHoverZone) sidebarHoverZone.classList.remove('hidden');
+    if (navCollapsedActions) navCollapsedActions.classList.remove('hidden');
+    updateNavWorkspaceBadge();
+  } else {
+    currentSidebarState = 'expanded';
+    if (sidebarHoverZone) sidebarHoverZone.classList.add('hidden');
+    if (navCollapsedActions) navCollapsedActions.classList.add('hidden');
+  }
+
+  // Persist state across restarts
+  if (window.browserAPI && window.browserAPI.updateSettings) {
+    window.browserAPI.updateSettings({ sidebarState: currentSidebarState }).catch(() => {});
+  }
+
+  // Recompute layout bounds after CSS transition finishes
+  setTimeout(sendLayoutBounds, 220);
+}
+
+function cycleSidebarState() {
+  if (currentSidebarState === 'expanded') {
+    setSidebarState('collapsed');
+  } else if (currentSidebarState === 'collapsed') {
+    setSidebarState('hidden');
+  } else {
+    setSidebarState('expanded');
+  }
+}
+
+function cycleWorkspaces() {
+  if (!workspaces || workspaces.length <= 1) return;
+  const curIdx = workspaces.findIndex((w) => w.id === activeWorkspaceId);
+  const nextIdx = (curIdx + 1) % workspaces.length;
+  window.browserAPI.switchWorkspace(workspaces[nextIdx].id);
+}
+
+// Sidebar toggle buttons (header button & toolbar button)
+btnToggleSidebar.addEventListener('click', cycleSidebarState);
+if (btnNavToggleSidebar) {
+  btnNavToggleSidebar.addEventListener('click', cycleSidebarState);
+}
+
+// Nav toolbar New Tab button (when sidebar hidden)
+if (btnNavNewTab) {
+  btnNavNewTab.addEventListener('click', () => {
+    window.browserAPI.createTab('https://duckduckgo.com', true);
+    urlInput.focus();
+    urlInput.select();
+  });
+}
+
+// Nav toolbar Workspace Switcher (when sidebar hidden)
+if (navWorkspaceSwitcher) {
+  navWorkspaceSwitcher.addEventListener('click', cycleWorkspaces);
+}
+
+// Hover-to-reveal zone on left edge when sidebar is hidden
+if (sidebarHoverZone) {
+  sidebarHoverZone.addEventListener('mouseenter', () => {
+    if (currentSidebarState === 'hidden') {
+      if (hoverLeaveTimeout) clearTimeout(hoverLeaveTimeout);
+      sidebar.classList.add('overlay-open');
+    }
+  });
+}
+
+sidebar.addEventListener('mouseenter', () => {
+  if (hoverLeaveTimeout) clearTimeout(hoverLeaveTimeout);
+});
+
+sidebar.addEventListener('mouseleave', () => {
+  if (currentSidebarState === 'hidden' && sidebar.classList.contains('overlay-open')) {
+    hoverLeaveTimeout = setTimeout(() => {
+      sidebar.classList.remove('overlay-open');
+    }, 250);
+  }
 });
 
 // New Tab button
@@ -1218,6 +1322,11 @@ window.addEventListener('keydown', (e) => {
   else if (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'n') {
     e.preventDefault();
     openWorkspaceModal(null);
+  }
+  // Ctrl+B: Toggle Sidebar (Expanded -> Icons-only -> Hidden)
+  else if (isCtrlOrCmd && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b') {
+    e.preventDefault();
+    cycleSidebarState();
   }
   // Ctrl+Shift+S: Toggle Split View
   else if (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 's') {
@@ -1369,6 +1478,7 @@ window.browserAPI.onWorkspaceStateChanged(async (state) => {
     const ws = workspaces.find((w) => w.id === activeWorkspaceId);
     proxyControl.onWorkspaceSwitched(activeWorkspaceId, ws ? ws.name : '');
   }
+  updateNavWorkspaceBadge();
 });
 
 if (window.browserAPI.onNotesInsertText) {
@@ -1450,3 +1560,12 @@ window.browserAPI.onPageCrash(({ tabId }) => {
 
 // Initial layout calculation
 setTimeout(sendLayoutBounds, 100);
+
+// Load persistent sidebar state on startup
+if (window.browserAPI && window.browserAPI.getSettings) {
+  window.browserAPI.getSettings().then((s) => {
+    if (s && s.sidebarState) {
+      setSidebarState(s.sidebarState);
+    }
+  }).catch(() => {});
+}
