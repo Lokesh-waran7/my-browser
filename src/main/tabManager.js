@@ -1,8 +1,10 @@
 // Tab Manager - Manages WebContentsView instances, lifecycle, security, and view creation
 const { WebContentsView, Menu, MenuItem } = require('electron');
+const path = require('path');
 const privacyManager = require('./privacyManager');
 const youtubeAdHandler = require('./youtubeAdHandler');
 const jsonPageHandler = require('./jsonPageHandler');
+const netdebugLogger = require('./netdebugLogger');
 
 class TabManager {
   constructor(mainWindow) {
@@ -80,8 +82,13 @@ class TabManager {
 
     // Navigation and URL updates
     const triggerYouTubeHandler = (url) => {
+      if (this.isSafeMode) return;
       youtubeAdHandler.handleNavigation(wc, url, privacyManager);
     };
+
+    wc.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+      netdebugLogger.log('PageLoad:Fail', `[${errorCode}] ${errorDescription} on ${validatedURL}`);
+    });
 
     const handleNav = (event, url) => {
       tab.url = url;
@@ -155,6 +162,21 @@ class TabManager {
     wc.on('focus', () => {
       tab.lastActiveTime = Date.now();
       if (this.onViewFocus) this.onViewFocus(tabId);
+    });
+
+    // HTML Fullscreen synchronization (YouTube, HTML5 video, Canvas)
+    wc.on('enter-html-full-screen', () => {
+      netdebugLogger.log('TabManager', `Tab ${tabId} entered HTML full screen`);
+      if (this.onEnterHtmlFullScreen) {
+        this.onEnterHtmlFullScreen(tabId);
+      }
+    });
+
+    wc.on('leave-html-full-screen', () => {
+      netdebugLogger.log('TabManager', `Tab ${tabId} left HTML full screen`);
+      if (this.onLeaveHtmlFullScreen) {
+        this.onLeaveHtmlFullScreen(tabId);
+      }
     });
 
     // Target="_blank" / window.open
@@ -331,6 +353,11 @@ class TabManager {
     const tab = this.tabs.get(tabId);
     if (!tab) return false;
 
+    // Exit HTML Fullscreen if the tab being closed is currently fullscreen
+    if (this.splitManager && this.splitManager.htmlFullScreenTabId === tabId) {
+      this.splitManager.leaveHtmlFullScreen(tabId);
+    }
+
     // Save for Ctrl+Shift+T reopen
     if (tab.url && !tab.url.startsWith('browser://') && !tab.url.startsWith('about:')) {
       this.closedTabsStack.push({
@@ -441,6 +468,16 @@ class TabManager {
         this.proxyManager.renderKillSwitchPage(tab.view.webContents, -130, 'Proxy Kill Switch Engaged');
         return;
       }
+    }
+
+    if (url && url.toLowerCase() === 'browser://net-test') {
+      tab.url = 'browser://net-test';
+      tab.title = 'Network Self-Test (browser://net-test)';
+      if (this.onTabUpdated) this.onTabUpdated(tab);
+      if (tab.view && tab.view.webContents) {
+        tab.view.webContents.loadFile(path.join(__dirname, '../renderer/net-test.html')).catch(() => {});
+      }
+      return;
     }
     if (tab.view && tab.view.webContents) {
       tab.view.webContents.loadURL(url).catch(() => {});

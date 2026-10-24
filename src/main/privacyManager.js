@@ -6,6 +6,7 @@ const { app, session } = require('electron');
 const { ElectronBlocker } = require('@ghostery/adblocker-electron');
 const tld = require('tldts-experimental');
 const logger = require('./logger');
+const netdebugLogger = require('./netdebugLogger');
 
 class PrivacyManager {
   constructor() {
@@ -24,7 +25,7 @@ class PrivacyManager {
     this.scriptsInjectedCount = 0;
     this.stylesInjectedCount = 0;
 
-    // Tracking query parameters to strip from URLs
+    // Tracking query parameters to strip from URLs (GET requests only)
     this.trackingParameters = [
       'utm_source',
       'utm_medium',
@@ -40,7 +41,6 @@ class PrivacyManager {
     ];
 
     // Domains exempted from aggressive blocking to prevent breaking core search functionality
-    // DuckDuckGo uses improving.duckduckgo.com for essential client-side state/search resolution
     this.exemptDomains = new Set([
       'duckduckgo.com',
       'improving.duckduckgo.com',
@@ -54,7 +54,8 @@ class PrivacyManager {
   }
 
   /**
-   * Initializes Ghostery full engine and session interceptors.
+   * Initializes Ghostery full engine and session cosmetic filters.
+   * Network filtering is handled centrally by NetworkPipeline.
    */
   async init(targetSession = session.defaultSession) {
     this.targetSession = targetSession;
@@ -66,20 +67,20 @@ class PrivacyManager {
         try {
           const buffer = fs.readFileSync(this.cachePath);
           this.blocker = ElectronBlocker.deserialize(buffer);
-          console.log('[PrivacyManager] Blocker engine loaded from disk cache (~20ms).');
+          netdebugLogger.log('PrivacyManager', 'Blocker engine loaded from disk cache (~20ms).');
         } catch (cacheErr) {
-          console.warn('[PrivacyManager] Cache read failed, fetching fresh engine:', cacheErr.message);
+          netdebugLogger.log('PrivacyManager', `Cache read failed, fetching fresh engine: ${cacheErr.message}`);
           this.blocker = await ElectronBlocker.fromPrebuiltFull(fetch);
           fs.writeFile(this.cachePath, Buffer.from(this.blocker.serialize()), () => {});
         }
       } else {
-        console.log('[PrivacyManager] Initializing fresh Ghostery full prebuilt engine...');
+        netdebugLogger.log('PrivacyManager', 'Initializing fresh Ghostery full prebuilt engine...');
         this.blocker = await ElectronBlocker.fromPrebuiltFull(fetch);
         fs.writeFile(this.cachePath, Buffer.from(this.blocker.serialize()), () => {});
-        console.log('[PrivacyManager] Ghostery engine loaded and cached to disk.');
+        netdebugLogger.log('PrivacyManager', 'Ghostery engine loaded and cached to disk.');
       }
 
-      // 2. Set up lightweight in-memory telemetry (avoid heavy per-request console.log)
+      // 2. Set up lightweight in-memory telemetry
       this.blocker.on('request-blocked', (req) => {
         this.totalBlockedCount++;
         const isYouTube = req.url.includes('youtube.com') ||
@@ -95,95 +96,15 @@ class PrivacyManager {
       this.blocker.on('script-injected', () => { this.scriptsInjectedCount++; });
       this.blocker.on('style-injected', () => { this.stylesInjectedCount++; });
 
-      // 3. Refresh & merge uBlock Origin YouTube filters and quick-fixes
+      // 3. Refresh & merge uBlock Origin network filter rules (excluding harmful scriptlet directives)
       this.refreshUblockFilters().catch((err) => {
-        console.warn('[PrivacyManager] Non-fatal error refreshing uBlock filters:', err.message);
+        netdebugLogger.log('PrivacyManager', `Non-fatal error refreshing uBlock filters: ${err.message}`);
       });
 
-      // 4. Hook Ghostery's onBeforeRequest to coordinate HTTPS upgrades, tracking stripping, and domain exemptions
-      const origOnBeforeRequest = this.blocker.onBeforeRequest.bind(this.blocker);
-      this.blocker.onBeforeRequest = (details, callback) => {
-        try {
-          const urlObj = new URL(details.url);
-          const hostname = urlObj.hostname.toLowerCase();
-
-          // Exemption check (e.g. duckduckgo.com)
-          const isExempt = Array.from(this.exemptDomains).some(
-            (d) => hostname === d || hostname.endsWith('.' + d)
-          );
-          if (isExempt) {
-            return callback({});
-          }
-
-          // Per-site allowlist check
-          const isAllowlisted = Array.from(this.allowlist).some(
-            (d) => hostname === d || hostname.endsWith('.' + d)
-          );
-          if (isAllowlisted) {
-            return callback({});
-          }
-
-          // HTTP -> HTTPS Upgrade
-          if (this.httpsUpgradeEnabled && urlObj.protocol === 'http:' && !hostname.includes('localhost') && hostname !== '127.0.0.1') {
-            urlObj.protocol = 'https:';
-            return callback({ redirectURL: urlObj.toString() });
-          }
-
-          // Tracking query parameter stripping
-          if (this.trackingStrippingEnabled && urlObj.search) {
-            let modified = false;
-            const searchParams = urlObj.searchParams;
-            for (const param of this.trackingParameters) {
-              if (searchParams.has(param)) {
-                searchParams.delete(param);
-                modified = true;
-              }
-            }
-            if (modified) {
-              return callback({ redirectURL: urlObj.toString() });
-            }
-          }
-        } catch (err) {
-          // Fall through on invalid URLs
-        }
-
-        // Delegate to Ghostery blocker if enabled
-        if (!this.adBlockerEnabled) {
-          return callback({});
-        }
-
-        return origOnBeforeRequest(details, callback);
-      };
-
-      // 5. Hook Ghostery's onHeadersReceived to support third-party cookie blocking
-      const origOnHeadersReceived = this.blocker.onHeadersReceived.bind(this.blocker);
-      this.blocker.onHeadersReceived = (details, callback) => {
-        origOnHeadersReceived(details, (res) => {
-          let responseHeaders = res && res.responseHeaders ? res.responseHeaders : details.responseHeaders;
-          if (this.thirdPartyCookieBlockingEnabled && responseHeaders && details.initiator) {
-            try {
-              const reqOrigin = new URL(details.url).origin;
-              const initOrigin = new URL(details.initiator).origin;
-              if (reqOrigin !== initOrigin) {
-                responseHeaders = { ...responseHeaders };
-                for (const key of Object.keys(responseHeaders)) {
-                  if (key.toLowerCase() === 'set-cookie') {
-                    delete responseHeaders[key];
-                  }
-                }
-              }
-            } catch (err) {}
-          }
-          callback(responseHeaders ? { responseHeaders } : {});
-        });
-      };
-
-      // 6. Hook cosmetic filters and scriptlet injection:
-      // a) Ensure webContents is alive and not destroyed
-      // b) Skip non-http/https URLs (about:blank, data:, internal browser://, file://)
-      // c) Fix root cause in scriptlets: wrap each in isolated IIFE to prevent
-      //    "SyntaxError: Identifier 'JSONPath' has already been declared" when multiple scriptlets declare the same identifier
-      // d) Catch any async executeJavaScript and insertCSS rejections so they never trigger unhandledRejection
+      // 4. Hook cosmetic filters and scriptlet injection:
+      // - Ensure webContents is alive and not destroyed
+      // - Skip non-http/https URLs
+      // - For YouTube, inject CSS only to hide ad slots, but skip custom scriptlets that conflict with Polymer
       this.blocker.onInjectCosmeticFilters = async (event, url, filterData) => {
         if (!event || !event.sender || event.sender.isDestroyed()) return;
         if (!url || typeof url !== 'string') return;
@@ -204,6 +125,7 @@ class PrivacyManager {
           const hostname = parsedDomain.hostname || '';
           const domain = parsedDomain.domain || '';
           const isBase = filterData === undefined;
+          const isYouTube = domain === 'youtube.com' || hostname.endsWith('youtube.com');
 
           const { active, styles, scripts } = this.blocker.getCosmeticsFilters({
             domain,
@@ -232,12 +154,8 @@ class PrivacyManager {
             });
           }
 
-          if (scripts && scripts.length > 0 && !event.sender.isDestroyed()) {
-            // Bundle all scriptlets into a single script with individual IIFE try/catch blocks.
-            // This prevents:
-            // 1) Electron's internal waitTillCanExecuteJavaScript from adding 500+ did-stop-loading listeners
-            // 2) Top-level variable identifier collisions (e.g. JSONPath) across multiple scriptlets
-            // 3) Massive IPC round-trip overhead on heavy pages like YouTube
+          // For YouTube, native youtubeAdHandler cleanly skips ads without prototype corruption
+          if (!isYouTube && scripts && scripts.length > 0 && !event.sender.isDestroyed()) {
             const bundledScript = scripts
               .map((script) => `(() => {\n  try {\n${script}\n  } catch (e) {}\n})();`)
               .join('\n');
@@ -251,20 +169,32 @@ class PrivacyManager {
         }
       };
 
-      // 7. Enable blocking in the target session (registers preload script & webRequest hooks)
+      // 5. Enable cosmetic filtering in target session without touching session.webRequest
+      // By setting loadNetworkFilters = false on the blocker config, enableBlockingInSession
+      // will ONLY register the preload script and cosmetic IPC handlers.
+      // Central NetworkPipeline handles all session.webRequest interceptors exclusively.
+      this.blocker.config.loadNetworkFilters = false;
+
+      const { ipcMain } = require('electron');
+      try {
+        ipcMain.removeHandler('@ghostery/adblocker/inject-cosmetic-filters');
+        ipcMain.removeHandler('@ghostery/adblocker/is-mutation-observer-enabled');
+      } catch (_) {}
+
       this.blocker.enableBlockingInSession(targetSession);
-      console.log('[PrivacyManager] Blocker enabled in session with cosmetic filtering and scriptlets active.');
+      netdebugLogger.log('PrivacyManager', 'Ghostery cosmetic filtering & preload script registered.');
     } catch (err) {
-      console.error('[PrivacyManager] Failed to initialize Ghostery engine:', err);
+      netdebugLogger.log('PrivacyManager', `Failed to initialize Ghostery engine: ${err.message}`);
     }
   }
 
   /**
    * Refreshes uBlock Origin YouTube ad filters and quick-fixes from upstream.
+   * Excludes all scriptlet (+js) and procedural (:style) directives to avoid prototype crashes.
    */
   async refreshUblockFilters() {
     if (!this.blocker) return;
-    console.log('[PrivacyManager] Fetching latest uBlock Origin filters and quick-fixes...');
+    netdebugLogger.log('PrivacyManager', 'Fetching latest uBlock Origin network filter rules...');
 
     const fetchWithTimeout = async (url, timeoutMs = 4000) => {
       const controller = new AbortController();
@@ -284,24 +214,25 @@ class PrivacyManager {
 
     const addedRules = [];
     if (quickFixes) {
-      const qfLines = quickFixes.split('\n').filter(l => l.trim() && !l.startsWith('!'));
+      const qfLines = quickFixes
+        .split('\n')
+        .filter((l) => l.trim() && !l.startsWith('!') && !l.includes('+js(') && !l.includes(':style('));
       addedRules.push(...qfLines);
     }
     if (filtersTxt) {
-      const ytLines = filtersTxt.split('\n').filter(l => l.includes('youtube') && !l.startsWith('!'));
+      const ytLines = filtersTxt
+        .split('\n')
+        .filter((l) => l.includes('youtube') && !l.startsWith('!') && !l.includes('+js(') && !l.includes(':style('));
       addedRules.push(...ytLines);
     }
 
     if (addedRules.length > 0) {
       this.blocker.updateFromDiff({ added: addedRules });
-      console.log(`[PrivacyManager] Applied ${addedRules.length} updated uBlock Origin filter rules.`);
+      netdebugLogger.log('PrivacyManager', `Applied ${addedRules.length} updated uBlock Origin network filter rules.`);
       fs.writeFile(this.cachePath, Buffer.from(this.blocker.serialize()), () => {});
     }
   }
 
-  /**
-   * Returns current privacy statistics.
-   */
   getStats() {
     return {
       totalBlocked: this.totalBlockedCount,
@@ -313,22 +244,22 @@ class PrivacyManager {
 
   setAdBlockerEnabled(enabled) {
     this.adBlockerEnabled = !!enabled;
-    console.log(`[PrivacyManager] Ad Blocker: ${this.adBlockerEnabled ? 'ENABLED' : 'DISABLED'}`);
+    netdebugLogger.log('PrivacyManager', `Ad Blocker: ${this.adBlockerEnabled ? 'ENABLED' : 'DISABLED'}`);
   }
 
   setTrackingStrippingEnabled(enabled) {
     this.trackingStrippingEnabled = !!enabled;
-    console.log(`[PrivacyManager] Tracking Parameter Stripping: ${this.trackingStrippingEnabled ? 'ENABLED' : 'DISABLED'}`);
+    netdebugLogger.log('PrivacyManager', `Tracking Parameter Stripping: ${this.trackingStrippingEnabled ? 'ENABLED' : 'DISABLED'}`);
   }
 
   setHttpsUpgradeEnabled(enabled) {
     this.httpsUpgradeEnabled = !!enabled;
-    console.log(`[PrivacyManager] HTTPS Upgrade: ${this.httpsUpgradeEnabled ? 'ENABLED' : 'DISABLED'}`);
+    netdebugLogger.log('PrivacyManager', `HTTPS Upgrade: ${this.httpsUpgradeEnabled ? 'ENABLED' : 'DISABLED'}`);
   }
 
   setThirdPartyCookieBlockingEnabled(enabled) {
     this.thirdPartyCookieBlockingEnabled = !!enabled;
-    console.log(`[PrivacyManager] Third-Party Cookie Blocking: ${this.thirdPartyCookieBlockingEnabled ? 'ENABLED' : 'DISABLED'}`);
+    netdebugLogger.log('PrivacyManager', `Third-Party Cookie Blocking: ${this.thirdPartyCookieBlockingEnabled ? 'ENABLED' : 'DISABLED'}`);
   }
 
   addExemption(domain) {
@@ -339,25 +270,24 @@ class PrivacyManager {
     this.exemptDomains.delete(domain.toLowerCase());
   }
 
-  // Per-site allowlist controls
   addAllowlist(domain) {
     if (domain) {
       this.allowlist.add(domain.toLowerCase());
-      console.log(`[PrivacyManager] Added to allowlist: ${domain}`);
+      netdebugLogger.log('PrivacyManager', `Added to allowlist: ${domain}`);
     }
   }
 
   removeAllowlist(domain) {
     if (domain) {
       this.allowlist.delete(domain.toLowerCase());
-      console.log(`[PrivacyManager] Removed from allowlist: ${domain}`);
+      netdebugLogger.log('PrivacyManager', `Removed from allowlist: ${domain}`);
     }
   }
 
   isDomainAllowed(domain) {
     if (!domain) return false;
     const lower = domain.toLowerCase();
-    return Array.from(this.allowlist).some(d => lower === d || lower.endsWith('.' + d));
+    return Array.from(this.allowlist).some((d) => lower === d || lower.endsWith('.' + d));
   }
 
   isAdBlockingActiveForUrl(url) {

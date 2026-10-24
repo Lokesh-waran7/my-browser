@@ -1310,6 +1310,20 @@ btnReload.addEventListener('click', () => {
 window.addEventListener('keydown', (e) => {
   const isCtrlOrCmd = e.ctrlKey || e.metaKey;
 
+  // Intercept keys when HTML fullscreen is active (Escape / F11 exits, block Ctrl+B)
+  const isHtmlFullscreen = document.body.classList.contains('html-fullscreen-active');
+  if (isHtmlFullscreen) {
+    if (e.key === 'Escape' || e.key === 'F11') {
+      e.preventDefault();
+      window.browserAPI.exitHtmlFullScreen();
+      return;
+    }
+    if (isCtrlOrCmd && e.key.toLowerCase() === 'b') {
+      e.preventDefault();
+      return;
+    }
+  }
+
   // Ctrl+1..9: Jump to workspace by position
   if (isCtrlOrCmd && !e.shiftKey && e.key >= '1' && e.key <= '9') {
     const idx = parseInt(e.key, 10) - 1;
@@ -1557,6 +1571,17 @@ window.browserAPI.onPageCrash(({ tabId }) => {
     updateToolbar();
   }
 });
+
+if (window.browserAPI && window.browserAPI.onHtmlFullScreenChange) {
+  window.browserAPI.onHtmlFullScreenChange(({ isFullscreen, tabId }) => {
+    document.body.classList.toggle('html-fullscreen-active', !!isFullscreen);
+    if (!isFullscreen) {
+      setTimeout(() => {
+        sendLayoutBounds();
+      }, 150);
+    }
+  });
+}
 
 // Initial layout calculation
 setTimeout(sendLayoutBounds, 100);

@@ -1,5 +1,7 @@
 // IPC Handlers - Bridges UI renderer commands with main process managers
-const { ipcMain } = require('electron');
+const { ipcMain, session } = require('electron');
+const fs = require('fs');
+const path = require('path');
 const logger = require('./logger');
 
 // Security Input Sanitization Helpers (Step 10 Part C)
@@ -68,6 +70,19 @@ function setupIpcHandlers(
 
   ipcMain.handle('tab:switch', (event, tabId) => {
     console.log(`[TabSwitch] Switching to tab: ${tabId}`);
+
+    // If switching away from a tab that is currently in HTML fullscreen, exit HTML fullscreen cleanly
+    if (splitManager && typeof splitManager.isHtmlFullScreen === 'function' && splitManager.isHtmlFullScreen() && splitManager.getHtmlFullScreenTabId() !== tabId) {
+      const oldFsTabId = splitManager.getHtmlFullScreenTabId();
+      const oldTab = tabManager.getTab(oldFsTabId);
+      if (oldTab && oldTab.view && oldTab.view.webContents && !oldTab.view.webContents.isDestroyed()) {
+        try {
+          oldTab.view.webContents.executeJavaScript('if (document.fullscreenElement) document.exitFullscreen().catch(()=>{})').catch(() => {});
+        } catch (_) {}
+      }
+      splitManager.leaveHtmlFullScreen(oldFsTabId);
+    }
+
     if (tabSuspender) {
       tabSuspender.unsuspendTab(tabId);
     }
@@ -622,11 +637,37 @@ function setupIpcHandlers(
     return tabManager.print(tabId);
   });
 
-  ipcMain.handle('window:toggleFullScreen', () => {
+  ipcMain.handle('window:toggleFullScreen', async () => {
     if (!mainWindow || mainWindow.isDestroyed()) return false;
+    if (splitManager && typeof splitManager.isHtmlFullScreen === 'function' && splitManager.isHtmlFullScreen()) {
+      const tabId = splitManager.getHtmlFullScreenTabId();
+      const tab = tabManager.getTab(tabId);
+      if (tab && tab.view && tab.view.webContents && !tab.view.webContents.isDestroyed()) {
+        try {
+          await tab.view.webContents.executeJavaScript('if (document.fullscreenElement) document.exitFullscreen().catch(()=>{})');
+        } catch (_) {}
+      }
+      splitManager.leaveHtmlFullScreen(tabId);
+      return false;
+    }
     const next = !mainWindow.isFullScreen();
     mainWindow.setFullScreen(next);
     return next;
+  });
+
+  ipcMain.handle('fullscreen:exitHtml', async () => {
+    if (!splitManager || typeof splitManager.isHtmlFullScreen !== 'function' || !splitManager.isHtmlFullScreen()) {
+      return false;
+    }
+    const tabId = splitManager.getHtmlFullScreenTabId();
+    const tab = tabManager.getTab(tabId);
+    if (tab && tab.view && tab.view.webContents && !tab.view.webContents.isDestroyed()) {
+      try {
+        await tab.view.webContents.executeJavaScript('if (document.fullscreenElement) document.exitFullscreen().catch(()=>{})');
+      } catch (_) {}
+    }
+    splitManager.leaveHtmlFullScreen(tabId);
+    return true;
   });
 
   // Auto-Updater (Step 10 Part D)
@@ -637,6 +678,119 @@ function setupIpcHandlers(
   ipcMain.handle('app:openDownloadPage', (event, url) => {
     if (updateManager) updateManager.openDownloadPage(url);
     return true;
+  });
+
+  // Diagnostic Self-Test (browser://net-test)
+  ipcMain.handle('netTest:run', async () => {
+    const results = {
+      directFetch: { pass: false, message: '', timeMs: 0 },
+      youtubePost: { pass: false, message: '', timeMs: 0 },
+      geminiModels: { pass: false, message: '', timeMs: 0 },
+      proxyState: { pass: false, message: '', details: {} },
+    };
+
+    // 1. Direct fetch to a public API
+    const t0 = Date.now();
+    try {
+      const res = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(5000) });
+      const data = await res.json();
+      results.directFetch = {
+        pass: res.ok,
+        message: res.ok ? `Public IP: ${data.ip}` : `HTTP ${res.status}`,
+        timeMs: Date.now() - t0,
+      };
+    } catch (e) {
+      results.directFetch = {
+        pass: false,
+        message: e.message,
+        timeMs: Date.now() - t0,
+      };
+    }
+
+    // 2. Main-process POST to YouTube API domain
+    const t1 = Date.now();
+    try {
+      const ytRes = await fetch('https://www.youtube.com/youtubei/v1/browse?prettyPrint=false', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          context: {
+            client: {
+              clientName: 'WEB',
+              clientVersion: '2.20240101.00.00',
+              hl: 'en',
+              gl: 'US'
+            }
+          }
+        }),
+        signal: AbortSignal.timeout(6000),
+      });
+      const ytText = await ytRes.text();
+      const isValid = ytText.includes('responseContext') || ytRes.ok;
+      results.youtubePost = {
+        pass: isValid,
+        message: `HTTP ${ytRes.status} (Payload size: ${ytText.length} bytes)`,
+        timeMs: Date.now() - t1,
+      };
+    } catch (e) {
+      results.youtubePost = {
+        pass: false,
+        message: e.message,
+        timeMs: Date.now() - t1,
+      };
+    }
+
+    // 3. Gemini model list request
+    const t2 = Date.now();
+    try {
+      const models = await aiManager.getAvailableModels(true);
+      const activeModel = aiManager.settings?.model || 'none';
+      results.geminiModels = {
+        pass: Array.isArray(models) && models.length > 0,
+        message: `Retrieved ${models.length} models (Active: ${activeModel})`,
+        timeMs: Date.now() - t2,
+      };
+    } catch (e) {
+      results.geminiModels = {
+        pass: false,
+        message: e.message,
+        timeMs: Date.now() - t2,
+      };
+    }
+
+    // 4. Current proxy state
+    try {
+      const proxyConfig = proxyManager ? proxyManager.getState() : { mode: 'off', status: 'off' };
+      const resolved = await session.defaultSession.resolveProxy('https://example.com');
+      const isKillSwitchActive = !!(proxyManager && proxyManager.isKillSwitchEngaged);
+      results.proxyState = {
+        pass: true,
+        message: `Mode: ${proxyConfig.mode} | Status: ${proxyConfig.status} | Resolved: ${resolved || 'DIRECT'} | KillSwitch: ${isKillSwitchActive ? 'ENGAGED' : 'OFF'}`,
+        details: {
+          ...proxyConfig,
+          resolvedRule: resolved,
+          isKillSwitchActive,
+        },
+      };
+    } catch (e) {
+      results.proxyState = {
+        pass: false,
+        message: e.message,
+        details: {},
+      };
+    }
+
+    return results;
+  });
+
+  ipcMain.handle('netTest:getLog', () => {
+    try {
+      const p = path.join(process.cwd(), 'logs', 'netdebug.log');
+      if (fs.existsSync(p)) {
+        return fs.readFileSync(p, 'utf8');
+      }
+    } catch (_) {}
+    return '';
   });
 }
 

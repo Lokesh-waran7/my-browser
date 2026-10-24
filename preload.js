@@ -141,10 +141,15 @@ contextBridge.exposeInMainWorld('browserAPI', {
   getZoom: (tabId) => ipcRenderer.invoke('tabs:getZoom', tabId),
   printTab: (tabId) => ipcRenderer.invoke('tabs:print', tabId),
   toggleFullScreen: () => ipcRenderer.invoke('window:toggleFullScreen'),
+  exitHtmlFullScreen: () => ipcRenderer.invoke('fullscreen:exitHtml'),
 
   // Auto-Updater (Step 10 Part D)
   checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
   openDownloadPage: (url) => ipcRenderer.invoke('app:openDownloadPage', url),
+
+  // Network Diagnostic Self-Test (browser://net-test)
+  runNetTest: () => ipcRenderer.invoke('netTest:run'),
+  getNetDebugLog: () => ipcRenderer.invoke('netTest:getLog'),
 
   // Event Subscriptions
   onTabCreated: (callback) => {
@@ -203,6 +208,9 @@ contextBridge.exposeInMainWorld('browserAPI', {
   },
   onUpdateAvailable: (callback) => {
     ipcRenderer.on('app:updateAvailable', (e, data) => callback(data));
+  },
+  onHtmlFullScreenChange: (callback) => {
+    ipcRenderer.on('fullscreen:htmlStateChange', (e, data) => callback(data));
   },
 });
 

@@ -4,6 +4,7 @@ const app = electron && electron.app;
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const netdebugLogger = require('./netdebugLogger');
 
 class PermissionsManager {
   constructor(mainWindow = null, targetSession = null, customUserDataPath = null) {
@@ -62,6 +63,29 @@ class PermissionsManager {
     if (this.permissions[origin] && this.permissions[origin][permission] !== undefined) {
       return this.permissions[origin][permission] === 'allow';
     }
+
+    // Auto-allow standard playback, interaction, and fullscreen permissions without prompting for web pages
+    const autoAllowed = [
+      'fullscreen',
+      'pointerLock',
+      'media',
+      'mediaKeySystemAccess',
+      'clipboard-sanitized-write',
+      'idle-detection',
+      'speaker-selection',
+    ];
+    if (autoAllowed.includes(permission)) {
+      if (origin.startsWith('http://') || origin.startsWith('https://') || origin.startsWith('browser://')) {
+        return true;
+      }
+    }
+
+    // Log denied permissions (permission name and host only, no secrets)
+    try {
+      const host = new URL(requestingOrigin).host;
+      netdebugLogger.log('Permissions:Denied', `Permission check denied: [${permission}] for host: ${host}`);
+    } catch (_) {}
+
     return false; // default deny
   }
 
@@ -75,9 +99,29 @@ class PermissionsManager {
       return callback(isAllowed);
     }
 
-    // Default deny for unsupported/sensitive background permissions
-    const promptable = ['media', 'geolocation', 'notifications', 'midi'];
+    // Auto-allow standard playback, interaction, and fullscreen permissions without prompt
+    const autoAllowed = [
+      'fullscreen',
+      'pointerLock',
+      'media',
+      'mediaKeySystemAccess',
+      'clipboard-sanitized-write',
+      'idle-detection',
+      'speaker-selection',
+    ];
+    if (autoAllowed.includes(permission)) {
+      if (origin.startsWith('http://') || origin.startsWith('https://') || origin.startsWith('browser://')) {
+        return callback(true);
+      }
+    }
+
+    // Sensitive permissions that require user prompt (camera/mic, geolocation, notifications, etc.)
+    const promptable = ['geolocation', 'notifications', 'midi'];
     if (!promptable.includes(permission)) {
+      try {
+        const host = new URL(url).host;
+        netdebugLogger.log('Permissions:Denied', `Permission request denied: [${permission}] for host: ${host}`);
+      } catch (_) {}
       return callback(false);
     }
 

@@ -211,26 +211,16 @@ class ProxyManager {
       } catch (e) {}
     });
 
-    this.setupKillSwitchInterceptor();
+    // Kill switch interception is handled centrally by NetworkPipeline
     this.loadSettings();
     this.registerAuthHandler();
   }
 
   /**
-   * Sets up a webRequest interceptor that drops all traffic when Kill Switch is engaged.
+   * Delegated to central NetworkPipeline.
    */
   setupKillSwitchInterceptor() {
-    if (this.targetSession && this.targetSession.webRequest) {
-      this.targetSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
-        if (this.isKillSwitchEngaged && this.settings.enableKillSwitch) {
-          if (details.url.startsWith('file:') || details.url.startsWith('devtools:')) {
-            return callback({});
-          }
-          return callback({ cancel: true });
-        }
-        callback({});
-      });
-    }
+    // No-op: handled centrally by NetworkPipeline to avoid webRequest listener collisions
   }
 
   /**

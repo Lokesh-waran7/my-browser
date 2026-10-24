@@ -11,7 +11,8 @@ class TabSuspender {
     this.splitManager = splitManager;
     this.workspaceManager = workspaceManager;
 
-    this.settingsPath = path.join(app.getPath('userData'), 'suspender-settings.json');
+    const userDataDir = (app && typeof app.getPath === 'function') ? app.getPath('userData') : path.join(os.homedir(), '.coder-browser');
+    this.settingsPath = path.join(userDataDir, 'suspender-settings.json');
 
     // Default configuration
     this.enabled = true;
@@ -26,6 +27,9 @@ class TabSuspender {
       this.checkIdleTabs().catch(() => {});
       this.checkLowMemory().catch(() => {});
     }, 15000);
+    if (this.checkInterval && typeof this.checkInterval.unref === 'function') {
+      this.checkInterval.unref();
+    }
   }
 
   /**
@@ -130,6 +134,13 @@ class TabSuspender {
     // 3. Never suspend tabs visible in split view
     if (this.splitManager && this.splitManager.isSplit) {
       if (tab.id === this.splitManager.leftTabId || tab.id === this.splitManager.rightTabId) {
+        return false;
+      }
+    }
+
+    // 3b. Never suspend tabs currently in HTML fullscreen mode
+    if (this.splitManager && typeof this.splitManager.isHtmlFullScreen === 'function' && this.splitManager.isHtmlFullScreen()) {
+      if (this.splitManager.getHtmlFullScreenTabId() === tabId) {
         return false;
       }
     }

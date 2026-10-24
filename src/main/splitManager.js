@@ -1,4 +1,6 @@
 // Split Manager - Manages split view state, pane focus, and WebContentsView layout
+const netdebugLogger = require('./netdebugLogger');
+
 class SplitManager {
   constructor(mainWindow, tabManager) {
     this.mainWindow = mainWindow;
@@ -11,6 +13,8 @@ class SplitManager {
     this.focusedTabId = null;
     this.splitRatio = 0.5;
     this.isOverlayOpen = false; // When true, hides WebContentsViews so HTML modals/menus are not covered
+    this.htmlFullScreenTabId = null; // When set, tabId is in HTML fullscreen mode
+    this.wasWindowFullScreenBeforeHtml = false;
 
     // DOM-measured bounding coordinates (sent from UI renderer)
     this.layoutBounds = {
@@ -111,6 +115,10 @@ class SplitManager {
    * Automatically exits split view if a tab involved in the split is closed.
    */
   handleTabClosed(tabId) {
+    if (this.htmlFullScreenTabId === tabId) {
+      this.leaveHtmlFullScreen(tabId);
+    }
+
     if (!this.isSplit) return;
 
     if (this.leftTabId === tabId) {
@@ -120,6 +128,113 @@ class SplitManager {
       // Exit split and keep the remaining left tab
       this.closeSplit(this.leftTabId);
     }
+  }
+
+  isHtmlFullScreen() {
+    return !!this.htmlFullScreenTabId;
+  }
+
+  getHtmlFullScreenTabId() {
+    return this.htmlFullScreenTabId;
+  }
+
+  /**
+   * Enters HTML Fullscreen for a specific tab's WebContentsView.
+   * Hides the browser UI, sets window to fullscreen, and expands the view to (0, 0, width, height).
+   */
+  enterHtmlFullScreen(tabId) {
+    const tab = this.tabManager.getTab(tabId);
+    if (!tab || !tab.view) return;
+
+    this.htmlFullScreenTabId = tabId;
+    this.wasWindowFullScreenBeforeHtml = this.mainWindow.isFullScreen();
+
+    // 1. Tell UI to hide browser chrome (toolbar, sidebar, toolkit, find bar)
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send('fullscreen:htmlStateChange', {
+        isFullscreen: true,
+        tabId,
+      });
+    }
+
+    // 2. Put window into fullscreen mode
+    if (!this.mainWindow.isFullScreen()) {
+      this.mainWindow.setFullScreen(true);
+    }
+
+    // 3. Size the tab view to fill the entire content area
+    this.applyHtmlFullScreenBounds();
+  }
+
+  /**
+   * Sizes the active fullscreen tab view to (0, 0, width, height) and hides all other views.
+   */
+  applyHtmlFullScreenBounds() {
+    if (!this.htmlFullScreenTabId) return;
+    const tab = this.tabManager.getTab(this.htmlFullScreenTabId);
+    if (!tab || !tab.view) return;
+
+    const contentView = this.mainWindow.contentView;
+    if (!contentView) return;
+
+    // Ensure the fullscreen tab view is attached and visible
+    if (!contentView.children.includes(tab.view)) {
+      contentView.addChildView(tab.view);
+    }
+    tab.view.setVisible(true);
+
+    // Hide any other tab views (including other pane in split view)
+    const allTabs = Array.from(this.tabManager.tabs.values());
+    allTabs.forEach((t) => {
+      if (t.id !== this.htmlFullScreenTabId && t.view) {
+        t.view.setVisible(false);
+        try {
+          contentView.removeChildView(t.view);
+        } catch (_) {}
+      }
+    });
+
+    const [width, height] = this.mainWindow.getContentSize();
+    tab.view.setBounds({ x: 0, y: 0, width, height });
+
+    netdebugLogger.log(
+      'Fullscreen:Enter',
+      `Tab ${this.htmlFullScreenTabId} HTML fullscreen applied. Bounds: {x: 0, y: 0, width: ${width}, height: ${height}} | WindowFS: ${this.mainWindow.isFullScreen()}`
+    );
+  }
+
+  /**
+   * Leaves HTML Fullscreen, restores previous window state and re-applies previous layout.
+   */
+  leaveHtmlFullScreen(tabId = null) {
+    if (!this.htmlFullScreenTabId) return;
+    const exitingId = this.htmlFullScreenTabId;
+    if (tabId && tabId !== exitingId) return;
+
+    const wasWindowFS = this.wasWindowFullScreenBeforeHtml;
+    this.htmlFullScreenTabId = null;
+
+    // 1. Restore window fullscreen state
+    if (!wasWindowFS && this.mainWindow.isFullScreen()) {
+      this.mainWindow.setFullScreen(false);
+    }
+
+    // 2. Tell UI to restore browser chrome
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.send('fullscreen:htmlStateChange', {
+        isFullscreen: false,
+        tabId: exitingId,
+      });
+    }
+
+    // 3. Restore layout after window/DOM settle
+    setTimeout(() => {
+      this.applyLayout();
+      netdebugLogger.log(
+        'Fullscreen:Leave',
+        `Tab ${exitingId} left HTML fullscreen. Restored previous layout.`
+      );
+    }, 120);
   }
 
   /**
@@ -147,6 +262,11 @@ class SplitManager {
    * Repositions and attaches/detaches WebContentsViews according to the current layout.
    */
   applyLayout() {
+    if (this.htmlFullScreenTabId) {
+      this.applyHtmlFullScreenBounds();
+      return;
+    }
+
     const contentView = this.mainWindow.contentView;
     if (!contentView) return;
 

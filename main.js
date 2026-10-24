@@ -2,11 +2,20 @@
 const { app, BrowserWindow, session } = require('electron');
 const path = require('path');
 
-// Hardware acceleration & GPU switches to unlock full GPU rasterization and video decode
-app.commandLine.appendSwitch('ignore-gpu-blocklist');
-app.commandLine.appendSwitch('enable-gpu-rasterization');
-app.commandLine.appendSwitch('enable-zero-copy');
-app.commandLine.appendSwitch('enable-accelerated-video-decode');
+// Safe Mode Launch Flag (--safe-mode): disables all custom network handling, blocker, scriptlets, proxy, and GPU flags
+const isSafeMode = process.argv.includes('--safe-mode');
+const netdebugLogger = require('./src/main/netdebugLogger');
+const networkPipeline = require('./src/main/networkPipeline');
+
+if (isSafeMode) {
+  netdebugLogger.log('SafeMode', 'Safe Mode ACTIVE: GPU hardware acceleration flags skipped.');
+} else {
+  // Hardware acceleration & GPU switches to unlock full GPU rasterization and video decode
+  app.commandLine.appendSwitch('ignore-gpu-blocklist');
+  app.commandLine.appendSwitch('enable-gpu-rasterization');
+  app.commandLine.appendSwitch('enable-zero-copy');
+  app.commandLine.appendSwitch('enable-accelerated-video-decode');
+}
 
 const TabManager = require('./src/main/tabManager');
 const SplitManager = require('./src/main/splitManager');
@@ -83,6 +92,7 @@ function createWindow() {
 
   // Initialize modular managers
   tabManager = new TabManager(mainWindow);
+  tabManager.isSafeMode = isSafeMode;
   splitManager = new SplitManager(mainWindow, tabManager);
   workspaceManager = new WorkspaceManager(mainWindow, tabManager, splitManager);
   tabSuspender = new TabSuspender(mainWindow, tabManager, splitManager, workspaceManager);
@@ -91,7 +101,9 @@ function createWindow() {
   aiManager = new AIManager(mainWindow, tabManager, workspaceManager);
   aiManager.init();
   proxyManager = new ProxyManager(mainWindow);
-  proxyManager.init();
+  if (!isSafeMode) {
+    proxyManager.init();
+  }
 
   const settingsManager = new SettingsManager();
   const historyManager = new HistoryManager(settingsManager, aiManager);
@@ -105,6 +117,13 @@ function createWindow() {
   tabManager.tabSuspender = tabSuspender;
   tabManager.proxyManager = proxyManager;
   tabManager.historyManager = historyManager;
+  tabManager.splitManager = splitManager;
+  tabManager.onEnterHtmlFullScreen = (tabId) => {
+    splitManager.enterHtmlFullScreen(tabId);
+  };
+  tabManager.onLeaveHtmlFullScreen = (tabId) => {
+    splitManager.leaveHtmlFullScreen(tabId);
+  };
   proxyManager.tabManager = tabManager;
   splitManager.tabSuspender = tabSuspender;
   workspaceManager.tabSuspender = tabSuspender;
@@ -193,7 +212,7 @@ function createWindow() {
   // Workspace state updates
   workspaceManager.onWorkspaceChanged = (state) => {
     mainWindow.webContents.send('workspace:stateChanged', state);
-    if (proxyManager && state) {
+    if (proxyManager && state && !isSafeMode) {
       proxyManager.applyForWorkspace(state.activeWorkspaceId);
     }
   };
@@ -239,6 +258,13 @@ function createWindow() {
     splitManager.applyLayout();
   });
 
+  // Handle window leaving fullscreen (e.g. via OS controls) while HTML fullscreen active
+  mainWindow.on('leave-full-screen', () => {
+    if (splitManager && splitManager.isHtmlFullScreen()) {
+      splitManager.leaveHtmlFullScreen();
+    }
+  });
+
   // Restore or initialize workspaces once the UI finishes loading
   mainWindow.webContents.on('did-finish-load', () => {
     workspaceManager.init();
@@ -249,8 +275,31 @@ function createWindow() {
 
 // App lifecycle
 app.whenReady().then(async () => {
-  await privacyManager.init(session.defaultSession);
+  // Strip Electron/X.X.X from default User-Agent so Google/YouTube receive clean standard browser UA
+  if (!isSafeMode) {
+    try {
+      const rawUa = session.defaultSession.getUserAgent();
+      const cleanUa = rawUa
+        .replace(/Electron\/[0-9\.]+\s?/, '')
+        .replace(/my-browser\/[0-9\.]+\s?/, '');
+      session.defaultSession.setUserAgent(cleanUa);
+      netdebugLogger.log('UserAgent', `Set default session UserAgent: ${cleanUa}`);
+    } catch (_) {}
+  }
+
+  if (!isSafeMode) {
+    await privacyManager.init(session.defaultSession);
+  }
+
   createWindow();
+
+  // Initialize unified central network pipeline (exclusively handles all webRequest hooks)
+  networkPipeline.init({
+    session: session.defaultSession,
+    privacyManager: isSafeMode ? null : privacyManager,
+    proxyManager: isSafeMode ? null : proxyManager,
+    isSafeMode,
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

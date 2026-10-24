@@ -24,6 +24,29 @@ body {
   overflow: hidden;
 }
 
+/* HTML Fullscreen Mode (YouTube, HTML5 Video, Canvas): hide browser chrome entirely */
+body.html-fullscreen-active #sidebar,
+body.html-fullscreen-active #sidebar-hover-zone,
+body.html-fullscreen-active #nav-bar,
+body.html-fullscreen-active #dev-toolkit-panel,
+body.html-fullscreen-active #find-in-page-bar,
+body.html-fullscreen-active .sidebar-resizer,
+body.html-fullscreen-active .panel-resizer {
+  display: none !important;
+}
+
+body.html-fullscreen-active #app-container,
+body.html-fullscreen-active #main-content,
+body.html-fullscreen-active #content-area {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
 /* Left Sidebar for Workspaces & Vertical Tabs (3 States: Expanded, Collapsed/Icons, Hidden) */
 #sidebar {
   width: 220px;
