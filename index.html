@@ -76,6 +76,13 @@
               autocomplete="off"
               spellcheck="false"
             />
+            <button type="button" id="btn-bookmark-star" class="url-star-btn" title="Bookmark this tab">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+              </svg>
+            </button>
+            <!-- Address Bar Autocomplete Suggestions -->
+            <div id="url-suggestions" class="url-suggestions dropdown-menu hidden"></div>
           </div>
           <button type="submit" id="btn-go" class="nav-btn-go">Go</button>
         </form>
@@ -169,10 +176,35 @@
             </div>
           </div>
 
+          <button id="btn-open-bookmarks" class="nav-btn" title="Bookmarks (browser://bookmarks)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </button>
+          <button id="btn-open-history" class="nav-btn" title="History (browser://history)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+          </button>
+          <button id="btn-open-downloads" class="nav-btn" title="Downloads (browser://downloads)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span id="downloads-badge" class="downloads-badge hidden"></span>
+          </button>
           <button id="btn-dev-toolkit" class="nav-btn" title="Developer Toolkit (Ctrl+Shift+D)">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="16 18 22 12 16 6"></polyline>
               <polyline points="8 6 2 12 8 18"></polyline>
+            </svg>
+          </button>
+          <button id="btn-open-settings" class="nav-btn" title="Settings (browser://settings)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
           </button>
         </div>
@@ -183,6 +215,30 @@
         <span>⚠️ This web page crashed unexpectedly.</span>
         <button id="btn-reload-crash" class="crash-reload-btn">Reload Page</button>
       </div>
+
+      <!-- Permission Request Banner (Step 10 Part A) -->
+      <div id="permission-prompt-banner" class="permission-prompt-banner hidden">
+        <div class="permission-prompt-content">
+          <span class="permission-prompt-icon">🔐</span>
+          <span id="permission-prompt-text" class="permission-prompt-text"></span>
+        </div>
+        <div class="permission-prompt-actions">
+          <button type="button" id="btn-perm-allow" class="toolkit-btn primary small">Allow</button>
+          <button type="button" id="btn-perm-block" class="toolkit-btn secondary small">Block</button>
+        </div>
+      </div>
+
+      <!-- Floating Find In Page Bar (Ctrl+F) -->
+      <div id="find-in-page-bar" class="find-in-page-bar hidden">
+        <input type="text" id="find-input" class="find-input" placeholder="Find in page..." autocomplete="off" spellcheck="false" />
+        <span id="find-match-count" class="find-match-count">0 / 0</span>
+        <button type="button" id="btn-find-prev" class="find-btn" title="Previous match (Shift+Enter)">▲</button>
+        <button type="button" id="btn-find-next" class="find-btn" title="Next match (Enter)">▼</button>
+        <button type="button" id="btn-find-close" class="find-btn-close" title="Close (Escape)">&times;</button>
+      </div>
+
+      <!-- Floating Zoom Pill Indicator -->
+      <div id="zoom-pill" class="zoom-pill hidden">100%</div>
 
       <!-- Main Content Body: Flex row containing view-area and the resizable right dev-toolkit-panel -->
       <div id="content-body">
@@ -934,10 +990,102 @@
     </div>
   </div>
 
+  <!-- History Modal (browser://history) -->
+  <div id="history-modal" class="modal-backdrop hidden">
+    <div class="modal-card internal-page-card">
+      <div class="modal-header">
+        <div class="internal-title-row">
+          <span class="internal-icon">🕒</span>
+          <div>
+            <h3>Browsing History</h3>
+            <span class="text-xs text-muted">Pages you've visited locally. Filtered against AI never-share list.</span>
+          </div>
+        </div>
+        <button id="btn-close-history" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="internal-page-toolbar">
+        <input type="text" id="history-search-input" class="modal-input" placeholder="Search history..." autocomplete="off" />
+        <button type="button" id="btn-clear-all-history" class="toolkit-btn danger small">Clear Browsing Data</button>
+      </div>
+      <div class="internal-page-body">
+        <div id="history-list-items" class="history-list"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="btn-done-history" class="modal-btn primary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bookmarks Manager Modal (browser://bookmarks) -->
+  <div id="bookmarks-modal" class="modal-backdrop hidden">
+    <div class="modal-card internal-page-card bookmarks-page-card">
+      <div class="modal-header">
+        <div class="internal-title-row">
+          <span class="internal-icon">⭐</span>
+          <div>
+            <h3>Bookmarks Manager</h3>
+            <span class="text-xs text-muted">Manage your saved sites, organize folders, import & export.</span>
+          </div>
+        </div>
+        <button id="btn-close-bookmarks" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="internal-page-toolbar bookmarks-toolbar">
+        <div class="bookmarks-folder-row">
+          <label class="text-xs text-muted">Folder:</label>
+          <select id="bookmarks-folder-select" class="modal-select small-select"></select>
+          <button type="button" id="btn-new-bookmark-folder" class="toolkit-btn secondary small">+ Folder</button>
+        </div>
+        <input type="text" id="bookmarks-search-input" class="modal-input" placeholder="Search bookmarks..." autocomplete="off" />
+        <div class="bookmarks-action-btns">
+          <button type="button" id="btn-add-bookmark-manual" class="toolkit-btn secondary small">+ Add</button>
+          <button type="button" id="btn-import-bookmarks-html" class="toolkit-btn secondary small">Import HTML</button>
+          <button type="button" id="btn-export-bookmarks-html" class="toolkit-btn secondary small">Export HTML</button>
+          <input type="file" id="bookmarks-file-input" accept=".html,.htm" class="hidden" />
+        </div>
+      </div>
+      <div class="internal-page-body">
+        <div id="bookmarks-list-items" class="bookmarks-list"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="btn-done-bookmarks" class="modal-btn primary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Downloads Manager Modal (browser://downloads) -->
+  <div id="downloads-modal" class="modal-backdrop hidden">
+    <div class="modal-card internal-page-card">
+      <div class="modal-header">
+        <div class="internal-title-row">
+          <span class="internal-icon">📥</span>
+          <div>
+            <h3>Downloads</h3>
+            <span class="text-xs text-muted">View active and completed file downloads.</span>
+          </div>
+        </div>
+        <button id="btn-close-downloads" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="internal-page-toolbar">
+        <span id="downloads-status-summary" class="text-xs text-muted">0 active downloads</span>
+        <div class="downloads-toolbar-actions">
+          <button type="button" id="btn-open-downloads-folder" class="toolkit-btn secondary small">Open Downloads Folder</button>
+          <button type="button" id="btn-clear-completed-downloads" class="toolkit-btn secondary small">Clear Completed</button>
+        </div>
+      </div>
+      <div class="internal-page-body">
+        <div id="downloads-list-items" class="downloads-list"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="btn-done-downloads" class="modal-btn primary">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="src/renderer/jsonViewer.js"></script>
   <script src="src/renderer/toolkitPanel.js"></script>
   <script src="src/renderer/aiPanel.js"></script>
   <script src="src/renderer/proxyControl.js"></script>
+  <script src="src/renderer/essentialsControl.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

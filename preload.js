@@ -95,6 +95,53 @@ contextBridge.exposeInMainWorld('browserAPI', {
   testProxyConnection: (customEndpoint) => ipcRenderer.invoke('proxy:testConnection', customEndpoint),
   resetProxyKillSwitch: () => ipcRenderer.invoke('proxy:resetKillSwitch'),
 
+  // Settings
+  getSettings: () => ipcRenderer.invoke('settings:get'),
+  updateSettings: (updates) => ipcRenderer.invoke('settings:update', updates),
+
+  // History
+  getHistory: (filter) => ipcRenderer.invoke('history:get', filter),
+  deleteHistoryItem: (id) => ipcRenderer.invoke('history:delete', id),
+  clearHistory: () => ipcRenderer.invoke('history:clear'),
+  getHistorySuggestions: (query) => ipcRenderer.invoke('history:getSuggestions', query),
+
+  // Bookmarks
+  getBookmarks: (filter) => ipcRenderer.invoke('bookmarks:get', filter),
+  isBookmarked: (url) => ipcRenderer.invoke('bookmarks:isBookmarked', url),
+  addBookmark: (bookmark) => ipcRenderer.invoke('bookmarks:add', bookmark),
+  removeBookmark: (id) => ipcRenderer.invoke('bookmarks:remove', id),
+  removeBookmarkByUrl: (url) => ipcRenderer.invoke('bookmarks:removeByUrl', url),
+  updateBookmark: (id, updates) => ipcRenderer.invoke('bookmarks:update', id, updates),
+  addBookmarkFolder: (name) => ipcRenderer.invoke('bookmarks:addFolder', name),
+  deleteBookmarkFolder: (id) => ipcRenderer.invoke('bookmarks:deleteFolder', id),
+  exportBookmarks: () => ipcRenderer.invoke('bookmarks:export'),
+  importBookmarks: (html) => ipcRenderer.invoke('bookmarks:import', html),
+  getBookmarkSuggestions: (query) => ipcRenderer.invoke('bookmarks:getSuggestions', query),
+
+  // Downloads
+  getDownloads: (query) => ipcRenderer.invoke('downloads:get', query),
+  pauseDownload: (id) => ipcRenderer.invoke('downloads:pause', id),
+  resumeDownload: (id) => ipcRenderer.invoke('downloads:resume', id),
+  cancelDownload: (id) => ipcRenderer.invoke('downloads:cancel', id),
+  openDownloadFile: (id) => ipcRenderer.invoke('downloads:open', id),
+  showDownloadInFolder: (id) => ipcRenderer.invoke('downloads:showInFolder', id),
+  clearCompletedDownloads: () => ipcRenderer.invoke('downloads:clearCompleted'),
+
+  // Permissions
+  respondToPermission: (requestId, decision) => ipcRenderer.invoke('permissions:respond', requestId, decision),
+  getAllPermissions: () => ipcRenderer.invoke('permissions:getAll'),
+  revokePermission: (origin, permission) => ipcRenderer.invoke('permissions:revoke', origin, permission),
+  clearAllPermissions: () => ipcRenderer.invoke('permissions:clearAll'),
+
+  // Tab Extra Controls
+  reopenClosedTab: () => ipcRenderer.invoke('tabs:reopenClosed'),
+  findInPage: (tabId, text, forward) => ipcRenderer.invoke('tabs:findInPage', tabId, text, forward),
+  stopFindInPage: (tabId, action) => ipcRenderer.invoke('tabs:stopFindInPage', tabId, action),
+  setZoom: (tabId, factor) => ipcRenderer.invoke('tabs:setZoom', tabId, factor),
+  getZoom: (tabId) => ipcRenderer.invoke('tabs:getZoom', tabId),
+  printTab: (tabId) => ipcRenderer.invoke('tabs:print', tabId),
+  toggleFullScreen: () => ipcRenderer.invoke('window:toggleFullScreen'),
+
   // Event Subscriptions
   onTabCreated: (callback) => {
     ipcRenderer.on('tab:created', (e, data) => callback(data));
@@ -140,6 +187,15 @@ contextBridge.exposeInMainWorld('browserAPI', {
   },
   onProxyStateChanged: (callback) => {
     ipcRenderer.on('proxy:stateChanged', (e, data) => callback(data));
+  },
+  onDownloadsUpdated: (callback) => {
+    ipcRenderer.on('downloads:updated', (e, data) => callback(data));
+  },
+  onPermissionPrompt: (callback) => {
+    ipcRenderer.on('permissions:prompt', (e, data) => callback(data));
+  },
+  onFoundInPage: (callback) => {
+    ipcRenderer.on('tab:foundInPage', (e, data) => callback(data));
   },
 });
 

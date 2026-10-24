@@ -24,6 +24,8 @@ class TabManager {
     this.onViewFocus = null;
     this.onSendSelectionToNotes = null;
     this.onAskAIAboutSelection = null;
+    this.historyManager = null;
+    this.closedTabsStack = [];
   }
 
   /**
@@ -75,6 +77,9 @@ class TabManager {
       tab.canGoBack = wc.canGoBack();
       tab.canGoForward = wc.canGoForward();
       if (this.onTabUpdated) this.onTabUpdated(tab);
+      if (this.historyManager) {
+        this.historyManager.addEntry(url, tab.title);
+      }
       triggerYouTubeHandler(url);
     };
 
@@ -89,6 +94,18 @@ class TabManager {
       triggerYouTubeHandler(wc.getURL());
     });
 
+    // Find in page event synchronization
+    wc.on('found-in-page', (event, result) => {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send('tab:foundInPage', {
+          tabId,
+          activeMatchOrdinal: result.activeMatchOrdinal,
+          numberOfMatches: result.matches,
+          finalUpdate: result.finalUpdate,
+        });
+      }
+    });
+
     // Error logging and proxy kill switch handling
     wc.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
       console.log(`[did-fail-load] Tab: ${tabId}, Code: ${errorCode}, Description: ${errorDescription}, URL: ${validatedURL}, MainFrame: ${isMainFrame}`);
@@ -100,6 +117,9 @@ class TabManager {
     // Page title
     wc.on('page-title-updated', (event, title) => {
       tab.title = title || 'Untitled';
+      if (this.historyManager) {
+        this.historyManager.updateTitle(tab.url, title);
+      }
       if (this.onTabUpdated) this.onTabUpdated(tab);
     });
 
@@ -273,6 +293,18 @@ class TabManager {
     const tab = this.tabs.get(tabId);
     if (!tab) return false;
 
+    // Save for Ctrl+Shift+T reopen
+    if (tab.url && !tab.url.startsWith('browser://') && !tab.url.startsWith('about:')) {
+      this.closedTabsStack.push({
+        url: tab.url,
+        title: tab.title,
+        workspaceId: tab.workspaceId,
+      });
+      if (this.closedTabsStack.length > 25) {
+        this.closedTabsStack.shift();
+      }
+    }
+
     // Detach and clean up view if active
     if (tab.view) {
       try {
@@ -290,6 +322,62 @@ class TabManager {
       this.onTabClosed(tabId);
     }
 
+    return true;
+  }
+
+  /**
+   * Reopens the most recently closed tab (Ctrl+Shift+T).
+   */
+  reopenClosedTab() {
+    if (!this.closedTabsStack || this.closedTabsStack.length === 0) return null;
+    const closed = this.closedTabsStack.pop();
+    const tab = this.createTab(closed.url, true, false, false, { workspaceId: closed.workspaceId });
+    return tab;
+  }
+
+  /**
+   * Find in page for active tab.
+   */
+  findInPage(tabId, text, forward = true) {
+    const tab = this.tabs.get(tabId);
+    if (!tab || !tab.view || !tab.view.webContents || tab.view.webContents.isDestroyed()) return null;
+    if (!text) {
+      tab.view.webContents.stopFindInPage('clearSelection');
+      return 0;
+    }
+    return tab.view.webContents.findInPage(text, { forward, findNext: true });
+  }
+
+  stopFindInPage(tabId, action = 'clearSelection') {
+    const tab = this.tabs.get(tabId);
+    if (!tab || !tab.view || !tab.view.webContents || tab.view.webContents.isDestroyed()) return;
+    tab.view.webContents.stopFindInPage(action);
+  }
+
+  /**
+   * Zoom controls for active tab.
+   */
+  setZoom(tabId, factor) {
+    const tab = this.tabs.get(tabId);
+    if (!tab || !tab.view || !tab.view.webContents || tab.view.webContents.isDestroyed()) return 1.0;
+    const clamped = Math.min(Math.max(factor, 0.3), 3.0);
+    tab.view.webContents.setZoomFactor(clamped);
+    return clamped;
+  }
+
+  getZoom(tabId) {
+    const tab = this.tabs.get(tabId);
+    if (!tab || !tab.view || !tab.view.webContents || tab.view.webContents.isDestroyed()) return 1.0;
+    return tab.view.webContents.getZoomFactor();
+  }
+
+  /**
+   * Prints the active tab.
+   */
+  print(tabId) {
+    const tab = this.tabs.get(tabId);
+    if (!tab || !tab.view || !tab.view.webContents || tab.view.webContents.isDestroyed()) return false;
+    tab.view.webContents.print({ silent: false, printBackground: true });
     return true;
   }
 

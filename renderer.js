@@ -152,6 +152,45 @@ if (window.ProxyControl) {
   window.proxyControl = proxyControl;
 }
 
+// Essentials Controller (Step 10 Part A: History, Bookmarks, Downloads, Find, Zoom, Permissions)
+let essentialsControl = null;
+if (window.EssentialsControl) {
+  essentialsControl = new window.EssentialsControl({
+    getTargetTab: () => getTargetTab(),
+    showOverlay: (el) => showOverlay(el),
+    hideOverlay: (el) => hideOverlay(el),
+    navigate: (url) => {
+      const targetTab = getTargetTab();
+      if (targetTab) {
+        window.browserAPI.navigate(targetTab.id, normalizeUrl(url));
+      }
+    },
+  });
+  window.essentialsControl = essentialsControl;
+}
+
+// Browser Settings Cache for Search Engine & Essentials
+let browserSettings = { defaultSearchEngine: 'duckduckgo' };
+if (window.browserAPI && window.browserAPI.getSettings) {
+  window.browserAPI.getSettings().then((s) => {
+    if (s) browserSettings = s;
+  });
+}
+
+function getSearchUrl(query) {
+  const engine = (browserSettings.defaultSearchEngine || 'duckduckgo').toLowerCase();
+  const q = encodeURIComponent(query);
+  switch (engine) {
+    case 'google': return `https://www.google.com/search?q=${q}`;
+    case 'bing': return `https://www.bing.com/search?q=${q}`;
+    case 'brave': return `https://search.brave.com/search?q=${q}`;
+    case 'ecosia': return `https://www.ecosia.org/search?q=${q}`;
+    case 'duckduckgo':
+    default:
+      return `https://duckduckgo.com/?q=${q}`;
+  }
+}
+
 // Application State
 let workspaces = [];
 let activeWorkspaceId = null;
@@ -199,8 +238,11 @@ function getActiveWorkspaceTabs() {
  */
 function normalizeUrl(input) {
   const trimmed = input.trim();
-  if (!trimmed) return 'https://duckduckgo.com';
+  if (!trimmed) return getSearchUrl('');
 
+  if (/^browser:\/\//i.test(trimmed) || /^chrome:\/\//i.test(trimmed) || /^about:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
   if (/^https?:\/\//i.test(trimmed) || /^file:\/\//i.test(trimmed)) {
     return trimmed;
   }
@@ -210,7 +252,7 @@ function normalizeUrl(input) {
   if (/^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+/i.test(trimmed) && !trimmed.includes(' ')) {
     return `https://${trimmed}`;
   }
-  return `https://duckduckgo.com/?q=${encodeURIComponent(trimmed)}`;
+  return getSearchUrl(trimmed);
 }
 
 /**
@@ -294,6 +336,11 @@ function updateToolbar() {
         <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
       </svg>
     `;
+  }
+
+  // Bookmark star state (Step 10 Part A)
+  if (essentialsControl) {
+    essentialsControl.checkCurrentTabBookmarked();
   }
 
   // Split view button state
@@ -1078,6 +1125,7 @@ btnNewTab.addEventListener('click', () => {
 // Address Bar navigation
 urlForm.addEventListener('submit', (e) => {
   e.preventDefault();
+  if (essentialsControl) essentialsControl.hideSuggestions();
   const inputVal = urlInput.value.trim().toLowerCase();
   if (inputVal === 'browser://memory' || inputVal === 'chrome://memory' || inputVal === 'about:memory') {
     openMemoryDashboard();
@@ -1085,6 +1133,23 @@ urlForm.addEventListener('submit', (e) => {
   }
   if (inputVal === 'browser://gpu' || inputVal === 'chrome://gpu' || inputVal === 'about:gpu') {
     if (toolkitPanel) toolkitPanel.openGpuDiagnostics();
+    return;
+  }
+  if (inputVal === 'browser://history') {
+    if (essentialsControl) essentialsControl.openHistoryModal();
+    return;
+  }
+  if (inputVal === 'browser://bookmarks') {
+    if (essentialsControl) essentialsControl.openBookmarksModal();
+    return;
+  }
+  if (inputVal === 'browser://downloads') {
+    if (essentialsControl) essentialsControl.openDownloadsModal();
+    return;
+  }
+  if (inputVal === 'browser://settings') {
+    // Open settings modal (or proxy / general settings)
+    if (proxyControl) proxyControl.openSettingsModal();
     return;
   }
   const targetTab = getTargetTab();
@@ -1164,6 +1229,60 @@ window.addEventListener('keydown', (e) => {
       window.browserAPI.closeTab(targetTab.id);
     }
   }
+  // Ctrl+Shift+T: Reopen Closed Tab (Step 10 Part A)
+  else if (isCtrlOrCmd && e.shiftKey && e.key.toLowerCase() === 't') {
+    e.preventDefault();
+    window.browserAPI.reopenClosedTab();
+  }
+  // Ctrl+L: Focus and select address bar (Step 10 Part A)
+  else if (isCtrlOrCmd && !e.shiftKey && e.key.toLowerCase() === 'l') {
+    e.preventDefault();
+    urlInput.focus();
+    urlInput.select();
+  }
+  // Ctrl+Tab / Ctrl+Shift+Tab: Switch tabs (Step 10 Part A)
+  else if (isCtrlOrCmd && e.key === 'Tab') {
+    e.preventDefault();
+    const wsTabs = getActiveWorkspaceTabs();
+    if (wsTabs.length > 1) {
+      const curIdx = wsTabs.findIndex((t) => t.id === activeTabId);
+      const nextIdx = e.shiftKey
+        ? (curIdx - 1 + wsTabs.length) % wsTabs.length
+        : (curIdx + 1) % wsTabs.length;
+      window.browserAPI.switchTab(wsTabs[nextIdx].id);
+    }
+  }
+  // Ctrl+F: Find in Page (Step 10 Part A)
+  else if (isCtrlOrCmd && !e.shiftKey && e.key.toLowerCase() === 'f') {
+    e.preventDefault();
+    if (essentialsControl) essentialsControl.openFindBar();
+  }
+  // Ctrl+P: Print active tab (Step 10 Part A)
+  else if (isCtrlOrCmd && !e.shiftKey && e.key.toLowerCase() === 'p') {
+    e.preventDefault();
+    const targetTab = getTargetTab();
+    if (targetTab) window.browserAPI.print(targetTab.id);
+  }
+  // F11: Toggle Fullscreen (Step 10 Part A)
+  else if (e.key === 'F11') {
+    e.preventDefault();
+    window.browserAPI.toggleFullScreen();
+  }
+  // Ctrl + / = : Zoom In (Step 10 Part A)
+  else if (isCtrlOrCmd && (e.key === '=' || e.key === '+')) {
+    e.preventDefault();
+    if (essentialsControl) essentialsControl.zoomIn();
+  }
+  // Ctrl - : Zoom Out (Step 10 Part A)
+  else if (isCtrlOrCmd && (e.key === '-' || e.key === '_')) {
+    e.preventDefault();
+    if (essentialsControl) essentialsControl.zoomOut();
+  }
+  // Ctrl 0 : Reset Zoom (Step 10 Part A)
+  else if (isCtrlOrCmd && e.key === '0') {
+    e.preventDefault();
+    if (essentialsControl) essentialsControl.resetZoom();
+  }
   // Escape: Close any open modal or context menu
   else if (e.key === 'Escape') {
     closeWorkspaceModal();
@@ -1174,6 +1293,13 @@ window.addEventListener('keydown', (e) => {
     if (proxyControl) {
       proxyControl.closeDropdown();
       proxyControl.closeSettingsModal();
+    }
+    if (essentialsControl) {
+      essentialsControl.closeHistoryModal();
+      essentialsControl.closeBookmarksModal();
+      essentialsControl.closeDownloadsModal();
+      essentialsControl.closeFindBar();
+      essentialsControl.hideSuggestions();
     }
     hideContextMenus();
   }

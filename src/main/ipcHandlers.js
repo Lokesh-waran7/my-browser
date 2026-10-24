@@ -12,8 +12,16 @@ function setupIpcHandlers(
   apiTester,
   notesManager,
   aiManager,
-  proxyManager
+  proxyManager,
+  additionalManagers = {}
 ) {
+  const {
+    settingsManager,
+    historyManager,
+    bookmarksManager,
+    downloadsManager,
+    permissionsManager,
+  } = additionalManagers;
   // Tab Management
   ipcMain.handle('tab:create', (event, url, activate) => {
     const tab = tabManager.createTab(url, activate !== false);
@@ -433,6 +441,165 @@ function setupIpcHandlers(
     if (!proxyManager) throw new Error('Proxy manager not initialized');
     await proxyManager.resetKillSwitch();
     return proxyManager.getPublicState();
+  });
+
+  // Settings Management
+  ipcMain.handle('settings:get', () => {
+    return settingsManager ? settingsManager.getSettings() : {};
+  });
+
+  ipcMain.handle('settings:update', (event, updates) => {
+    return settingsManager ? settingsManager.updateSettings(updates) : {};
+  });
+
+  // History Management
+  ipcMain.handle('history:get', (event, { query, limit } = {}) => {
+    return historyManager ? historyManager.getHistory(query, limit) : [];
+  });
+
+  ipcMain.handle('history:delete', (event, id) => {
+    if (!id || typeof id !== 'string') return false;
+    return historyManager ? historyManager.deleteEntry(id) : false;
+  });
+
+  ipcMain.handle('history:clear', () => {
+    return historyManager ? historyManager.clearHistory() : false;
+  });
+
+  ipcMain.handle('history:getSuggestions', (event, query) => {
+    return historyManager ? historyManager.getSuggestions(query) : [];
+  });
+
+  // Bookmarks Management
+  ipcMain.handle('bookmarks:get', (event, { folderId, query } = {}) => {
+    return bookmarksManager ? bookmarksManager.getBookmarks(folderId, query) : { folders: [], items: [] };
+  });
+
+  ipcMain.handle('bookmarks:isBookmarked', (event, url) => {
+    return bookmarksManager ? bookmarksManager.isBookmarked(url) : false;
+  });
+
+  ipcMain.handle('bookmarks:add', (event, bookmark) => {
+    if (!bookmark || !bookmark.url) throw new Error('Invalid bookmark');
+    return bookmarksManager ? bookmarksManager.addBookmark(bookmark) : null;
+  });
+
+  ipcMain.handle('bookmarks:remove', (event, id) => {
+    return bookmarksManager ? bookmarksManager.removeBookmark(id) : false;
+  });
+
+  ipcMain.handle('bookmarks:removeByUrl', (event, url) => {
+    return bookmarksManager ? bookmarksManager.removeBookmarkByUrl(url) : false;
+  });
+
+  ipcMain.handle('bookmarks:update', (event, id, updates) => {
+    return bookmarksManager ? bookmarksManager.updateBookmark(id, updates) : null;
+  });
+
+  ipcMain.handle('bookmarks:addFolder', (event, name) => {
+    return bookmarksManager ? bookmarksManager.addFolder(name) : null;
+  });
+
+  ipcMain.handle('bookmarks:deleteFolder', (event, folderId) => {
+    return bookmarksManager ? bookmarksManager.deleteFolder(folderId) : false;
+  });
+
+  ipcMain.handle('bookmarks:export', () => {
+    return bookmarksManager ? bookmarksManager.exportToHtml() : '';
+  });
+
+  ipcMain.handle('bookmarks:import', (event, htmlContent) => {
+    return bookmarksManager ? bookmarksManager.importFromHtml(htmlContent) : 0;
+  });
+
+  ipcMain.handle('bookmarks:getSuggestions', (event, query) => {
+    return bookmarksManager ? bookmarksManager.getSuggestions(query) : [];
+  });
+
+  // Downloads Management
+  ipcMain.handle('downloads:get', (event, query) => {
+    return downloadsManager ? downloadsManager.getDownloads(query) : [];
+  });
+
+  ipcMain.handle('downloads:pause', (event, id) => {
+    return downloadsManager ? downloadsManager.pauseDownload(id) : false;
+  });
+
+  ipcMain.handle('downloads:resume', (event, id) => {
+    return downloadsManager ? downloadsManager.resumeDownload(id) : false;
+  });
+
+  ipcMain.handle('downloads:cancel', (event, id) => {
+    return downloadsManager ? downloadsManager.cancelDownload(id) : false;
+  });
+
+  ipcMain.handle('downloads:open', async (event, id) => {
+    return downloadsManager ? await downloadsManager.openFile(id) : false;
+  });
+
+  ipcMain.handle('downloads:showInFolder', (event, id) => {
+    return downloadsManager ? downloadsManager.showInFolder(id) : false;
+  });
+
+  ipcMain.handle('downloads:clearCompleted', () => {
+    return downloadsManager ? downloadsManager.clearCompleted() : [];
+  });
+
+  // Permissions Management
+  ipcMain.handle('permissions:respond', (event, requestId, decision) => {
+    return permissionsManager ? permissionsManager.respondToPrompt(requestId, decision) : false;
+  });
+
+  ipcMain.handle('permissions:getAll', () => {
+    return permissionsManager ? permissionsManager.getAllPermissions() : {};
+  });
+
+  ipcMain.handle('permissions:revoke', (event, origin, permission) => {
+    return permissionsManager ? permissionsManager.revokePermission(origin, permission) : false;
+  });
+
+  ipcMain.handle('permissions:clearAll', () => {
+    return permissionsManager ? permissionsManager.clearAllPermissions() : false;
+  });
+
+  // Tab Controls: Reopen Closed, Find, Zoom, Print, FullScreen
+  ipcMain.handle('tabs:reopenClosed', () => {
+    const tab = tabManager.reopenClosedTab();
+    if (!tab) return null;
+    return {
+      id: tab.id,
+      url: tab.url,
+      title: tab.title,
+      workspaceId: tab.workspaceId,
+    };
+  });
+
+  ipcMain.handle('tabs:findInPage', (event, tabId, text, forward = true) => {
+    return tabManager.findInPage(tabId, text, forward);
+  });
+
+  ipcMain.handle('tabs:stopFindInPage', (event, tabId, action = 'clearSelection') => {
+    tabManager.stopFindInPage(tabId, action);
+    return true;
+  });
+
+  ipcMain.handle('tabs:setZoom', (event, tabId, factor) => {
+    return tabManager.setZoom(tabId, factor);
+  });
+
+  ipcMain.handle('tabs:getZoom', (event, tabId) => {
+    return tabManager.getZoom(tabId);
+  });
+
+  ipcMain.handle('tabs:print', (event, tabId) => {
+    return tabManager.print(tabId);
+  });
+
+  ipcMain.handle('window:toggleFullScreen', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return false;
+    const next = !mainWindow.isFullScreen();
+    mainWindow.setFullScreen(next);
+    return next;
   });
 }
 

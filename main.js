@@ -17,6 +17,11 @@ const ApiTester = require('./src/main/apiTester');
 const NotesManager = require('./src/main/notesManager');
 const AIManager = require('./src/main/ai/aiManager');
 const ProxyManager = require('./src/main/proxyManager');
+const SettingsManager = require('./src/main/settingsManager');
+const HistoryManager = require('./src/main/historyManager');
+const BookmarksManager = require('./src/main/bookmarksManager');
+const DownloadsManager = require('./src/main/downloadsManager');
+const PermissionsManager = require('./src/main/permissionsManager');
 const setupIpcHandlers = require('./src/main/ipcHandlers');
 const logger = require('./src/main/logger');
 
@@ -65,8 +70,17 @@ function createWindow() {
   proxyManager = new ProxyManager(mainWindow);
   proxyManager.init();
 
+  const settingsManager = new SettingsManager();
+  const historyManager = new HistoryManager(settingsManager, aiManager);
+  const bookmarksManager = new BookmarksManager();
+  const downloadsManager = new DownloadsManager(mainWindow, settingsManager, session.defaultSession);
+  downloadsManager.attachToSession(session.defaultSession);
+  const permissionsManager = new PermissionsManager(mainWindow, session.defaultSession);
+  permissionsManager.attachToSession(session.defaultSession);
+
   tabManager.tabSuspender = tabSuspender;
   tabManager.proxyManager = proxyManager;
+  tabManager.historyManager = historyManager;
   proxyManager.tabManager = tabManager;
   splitManager.tabSuspender = tabSuspender;
   workspaceManager.tabSuspender = tabSuspender;
@@ -171,7 +185,14 @@ function createWindow() {
     apiTester,
     notesManager,
     aiManager,
-    proxyManager
+    proxyManager,
+    {
+      settingsManager,
+      historyManager,
+      bookmarksManager,
+      downloadsManager,
+      permissionsManager,
+    }
   );
 
   mainWindow.loadFile('index.html');
