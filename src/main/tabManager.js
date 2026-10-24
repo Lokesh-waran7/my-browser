@@ -13,6 +13,7 @@ class TabManager {
 
     // Injected reference for suspension coordination
     this.tabSuspender = null;
+    this.proxyManager = null;
 
     // Callback hooks for main process & IPC notifications
     this.onTabCreated = null;
@@ -88,9 +89,12 @@ class TabManager {
       triggerYouTubeHandler(wc.getURL());
     });
 
-    // Error logging
+    // Error logging and proxy kill switch handling
     wc.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
       console.log(`[did-fail-load] Tab: ${tabId}, Code: ${errorCode}, Description: ${errorDescription}, URL: ${validatedURL}, MainFrame: ${isMainFrame}`);
+      if (this.proxyManager && isMainFrame) {
+        this.proxyManager.handleProxyFailure(tab, errorCode, errorDescription, validatedURL);
+      }
     });
 
     // Page title
@@ -168,7 +172,11 @@ class TabManager {
     });
 
     if (urlToLoad) {
-      wc.loadURL(urlToLoad).catch(() => {});
+      if (this.proxyManager && this.proxyManager.isKillSwitchEngaged && this.proxyManager.settings && this.proxyManager.settings.enableKillSwitch) {
+        this.proxyManager.renderKillSwitchPage(wc, -130, 'Proxy Kill Switch Engaged');
+      } else {
+        wc.loadURL(urlToLoad).catch(() => {});
+      }
     }
 
     return view;
@@ -298,6 +306,12 @@ class TabManager {
     tab.isCrashed = false;
     tab.isLazy = false;
     tab.lastActiveTime = Date.now();
+    if (this.proxyManager && this.proxyManager.isKillSwitchEngaged && this.proxyManager.settings && this.proxyManager.settings.enableKillSwitch) {
+      if (tab.view && tab.view.webContents && !tab.view.webContents.isDestroyed()) {
+        this.proxyManager.renderKillSwitchPage(tab.view.webContents, -130, 'Proxy Kill Switch Engaged');
+        return;
+      }
+    }
     if (tab.view && tab.view.webContents) {
       tab.view.webContents.loadURL(url).catch(() => {});
     }

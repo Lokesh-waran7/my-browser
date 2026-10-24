@@ -140,6 +140,18 @@ if (window.AIPanel) {
   window.aiPanel = aiPanel;
 }
 
+// Proxy / Privacy Routing Controller (Step 9)
+let proxyControl = null;
+if (window.ProxyControl) {
+  proxyControl = new window.ProxyControl({
+    getActiveWorkspaceId: () => activeWorkspaceId,
+    getWorkspaces: () => workspaces,
+    showOverlay: (el) => showOverlay(el),
+    hideOverlay: (el) => hideOverlay(el),
+  });
+  window.proxyControl = proxyControl;
+}
+
 // Application State
 let workspaces = [];
 let activeWorkspaceId = null;
@@ -1159,6 +1171,10 @@ window.addEventListener('keydown', (e) => {
     closeMemoryDashboard();
     if (toolkitPanel) toolkitPanel.closeGpuModal();
     if (aiPanel) aiPanel.closeSettingsModal();
+    if (proxyControl) {
+      proxyControl.closeDropdown();
+      proxyControl.closeSettingsModal();
+    }
     hideContextMenus();
   }
   // Ctrl+Shift+I or F12: Open DevTools for active tab's WebContentsView
@@ -1200,6 +1216,10 @@ window.browserAPI.onWorkspaceStateChanged(async (state) => {
   }
   if (aiPanel) {
     aiPanel.setWorkspace(activeWorkspaceId);
+  }
+  if (proxyControl) {
+    const ws = workspaces.find((w) => w.id === activeWorkspaceId);
+    proxyControl.onWorkspaceSwitched(activeWorkspaceId, ws ? ws.name : '');
   }
 });
 

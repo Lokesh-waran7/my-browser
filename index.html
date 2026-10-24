@@ -114,6 +114,61 @@
               <line x1="18" y1="18" x2="18" y2="21"></line>
             </svg>
           </button>
+
+          <!-- Proxy / VPN Status Button & Dropdown Trigger (Step 9) -->
+          <div class="proxy-button-wrapper">
+            <button id="btn-proxy" class="nav-btn" title="Proxy / Privacy Routing">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+              </svg>
+              <span id="proxy-status-dot" class="proxy-status-dot off"></span>
+            </button>
+            <!-- Quick Proxy Dropdown -->
+            <div id="proxy-dropdown" class="proxy-dropdown dropdown-menu hidden">
+              <div class="proxy-dropdown-header">
+                <div class="proxy-dropdown-title-row">
+                  <span class="proxy-dropdown-title">🛡️ Proxy / Privacy Routing</span>
+                  <span id="proxy-status-badge" class="proxy-status-badge off">Off</span>
+                </div>
+                <div class="proxy-honest-label">Routes browser traffic only. Not a full-device VPN. The proxy operator can see your traffic.</div>
+              </div>
+              <div class="proxy-dropdown-body">
+                <div class="proxy-toggle-row">
+                  <span class="proxy-toggle-label">Routing Status:</span>
+                  <button type="button" id="btn-toggle-proxy-power" class="toolkit-btn secondary small">Turn ON</button>
+                </div>
+                <div class="proxy-select-row">
+                  <label for="proxy-quick-select" class="text-xs text-muted">Active Configuration:</label>
+                  <select id="proxy-quick-select" class="modal-select"></select>
+                </div>
+                <div id="proxy-active-details" class="proxy-active-details">
+                  <span class="text-muted">Target:</span>
+                  <strong id="proxy-active-target">Direct Connection</strong>
+                </div>
+                <!-- Kill switch notice if engaged -->
+                <div id="proxy-killswitch-warning" class="proxy-killswitch-warning hidden">
+                  <span>⚠️ Kill switch engaged: Traffic blocked.</span>
+                  <button type="button" id="btn-reset-killswitch" class="toolkit-btn danger small">Reset</button>
+                </div>
+                <!-- Test connection section -->
+                <div class="proxy-test-box">
+                  <button type="button" id="btn-test-proxy" class="toolkit-btn secondary small w-full">Test Connection & Echo IP</button>
+                  <div id="proxy-test-results" class="proxy-test-results hidden">
+                    <div class="test-row"><span>Proxy IP:</span> <strong id="proxy-test-proxy-ip">-</strong><span id="proxy-test-ip" class="hidden"></span></div>
+                    <div class="test-row"><span>Real IP:</span> <span id="proxy-test-real-ip">-</span></div>
+                    <div class="test-row"><span>Latency:</span> <span id="proxy-test-latency">-</span></div>
+                    <div id="proxy-test-warning-banner" class="proxy-test-warning-banner hidden"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="proxy-dropdown-footer">
+                <button type="button" id="btn-open-proxy-settings" class="toolkit-btn secondary small w-full">⚙️ Proxy Settings & Profiles...</button>
+              </div>
+            </div>
+          </div>
+
           <button id="btn-dev-toolkit" class="nav-btn" title="Developer Toolkit (Ctrl+Shift+D)">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="16 18 22 12 16 6"></polyline>
@@ -720,9 +775,169 @@
     </div>
   </div>
 
+  <!-- Proxy / VPN Settings Modal (Step 9) -->
+  <div id="proxy-settings-modal" class="modal-backdrop hidden">
+    <div class="modal-card proxy-settings-card">
+      <div class="modal-header">
+        <h3>🛡️ Proxy / Privacy Routing Settings</h3>
+        <button id="btn-close-proxy-settings" class="modal-close-btn">&times;</button>
+      </div>
+
+      <div class="proxy-settings-body">
+        <div class="proxy-honest-notice">
+          ⚠️ <strong>Honest privacy disclosure:</strong> Routes browser traffic only. Not a full-device VPN. The proxy operator can see your unencrypted traffic.
+        </div>
+
+        <!-- Mode Selection -->
+        <div class="settings-group">
+          <label class="settings-label">Routing Mode</label>
+          <div class="proxy-mode-tabs">
+            <button type="button" class="proxy-mode-tab active" data-mode="off">Off (Direct)</button>
+            <button type="button" class="proxy-mode-tab" data-mode="profile">Saved Profiles</button>
+            <button type="button" class="proxy-mode-tab" data-mode="manual">Manual Proxy</button>
+          </div>
+        </div>
+
+        <!-- Manual Proxy Section -->
+        <div id="proxy-section-manual" class="proxy-mode-section hidden">
+          <div class="modal-grid-2">
+            <div class="modal-field">
+              <label class="settings-label">Protocol</label>
+              <select id="proxy-manual-protocol" class="modal-select">
+                <option value="http">HTTP</option>
+                <option value="https">HTTPS</option>
+                <option value="socks5">SOCKS5 (DNS remote)</option>
+              </select>
+            </div>
+            <div class="modal-field">
+              <label class="settings-label">Port</label>
+              <input type="number" id="proxy-manual-port" class="modal-input" placeholder="8080" />
+            </div>
+          </div>
+          <div class="modal-field">
+            <label class="settings-label">Proxy Host / IP</label>
+            <input type="text" id="proxy-manual-host" class="modal-input" placeholder="e.g. 127.0.0.1 or proxy.example.com" />
+          </div>
+          <div class="modal-field">
+            <label class="settings-label">Bypass List (comma separated)</label>
+            <input type="text" id="proxy-manual-bypass" class="modal-input" placeholder="<local>, 127.0.0.1, localhost" />
+          </div>
+          <!-- Manual Auth -->
+          <div class="modal-grid-2 mt-2">
+            <div class="modal-field">
+              <label class="settings-label">Username (optional)</label>
+              <input type="text" id="proxy-manual-user" class="modal-input" autocomplete="off" />
+            </div>
+            <div class="modal-field">
+              <label class="settings-label">Password (optional)</label>
+              <input type="password" id="proxy-manual-pass" class="modal-input" autocomplete="off" />
+            </div>
+          </div>
+          <button type="button" id="btn-save-manual-proxy" class="toolkit-btn primary small mt-2">Apply Manual Proxy</button>
+        </div>
+
+        <!-- Profiles Section -->
+        <div id="proxy-section-profile" class="proxy-mode-section">
+          <div class="proxy-profile-header-row">
+            <span class="settings-label">Saved Proxy Profiles</span>
+            <button type="button" id="btn-add-profile" class="toolkit-btn secondary small">+ Add Profile</button>
+          </div>
+          <div id="proxy-profiles-list" class="proxy-profiles-list"></div>
+
+          <!-- Profile Editor Card -->
+          <div id="proxy-profile-editor" class="proxy-profile-editor hidden">
+            <h4 id="proxy-editor-title">Add / Edit Profile</h4>
+            <div class="modal-field">
+              <label class="settings-label">Profile Name</label>
+              <input type="text" id="proxy-edit-name" class="modal-input" placeholder="e.g. Work, Home SOCKS5" />
+            </div>
+            <div class="modal-grid-2">
+              <div class="modal-field">
+                <label class="settings-label">Protocol</label>
+                <select id="proxy-edit-protocol" class="modal-select">
+                  <option value="http">HTTP</option>
+                  <option value="https">HTTPS</option>
+                  <option value="socks5">SOCKS5 (DNS remote)</option>
+                </select>
+              </div>
+              <div class="modal-field">
+                <label class="settings-label">Port</label>
+                <input type="number" id="proxy-edit-port" class="modal-input" placeholder="8080" />
+              </div>
+            </div>
+            <div class="modal-field">
+              <label class="settings-label">Host / IP</label>
+              <input type="text" id="proxy-edit-host" class="modal-input" placeholder="e.g. 127.0.0.1 or proxy.example.com" />
+            </div>
+            <div class="modal-field">
+              <label class="settings-label">Bypass List</label>
+              <input type="text" id="proxy-edit-bypass" class="modal-input" placeholder="<local>, 127.0.0.1, localhost" />
+            </div>
+            <div class="modal-grid-2">
+              <div class="modal-field">
+                <label class="settings-label">Username (optional)</label>
+                <input type="text" id="proxy-edit-user" class="modal-input" autocomplete="off" />
+              </div>
+              <div class="modal-field">
+                <label class="settings-label">Password (optional)</label>
+                <input type="password" id="proxy-edit-pass" class="modal-input" placeholder="(Unchanged if blank)" autocomplete="off" />
+              </div>
+            </div>
+            <p class="text-xs text-muted">Passwords are encrypted via system safeStorage (DPAPI/Keychain).</p>
+            <div class="modal-actions mt-2">
+              <button type="button" id="btn-cancel-profile-edit" class="toolkit-btn secondary small">Cancel</button>
+              <button type="button" id="btn-save-profile-edit" class="toolkit-btn primary small">Save Profile</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Privacy & Protection Options -->
+        <div class="settings-group mt-3">
+          <label class="settings-label">Leak Prevention & Kill Switch</label>
+          <div class="proxy-checkbox-row">
+            <input type="checkbox" id="proxy-opt-killswitch" />
+            <label for="proxy-opt-killswitch">
+              <strong>Kill Switch:</strong> Block all page traffic if the proxy fails or disconnects instead of falling back to direct connection.
+            </label>
+          </div>
+          <div class="proxy-checkbox-row mt-2">
+            <input type="checkbox" id="proxy-opt-webrtc" />
+            <label for="proxy-opt-webrtc">
+              <strong>Prevent WebRTC Leaks:</strong> Disable non-proxied UDP (prevents WebRTC from exposing real IP).
+            </label>
+          </div>
+        </div>
+
+        <!-- IP-Echo Endpoint & Workspace Settings -->
+        <div class="settings-group">
+          <label class="settings-label">IP-Echo Verification Endpoint</label>
+          <input type="text" id="proxy-opt-endpoint" class="modal-input" placeholder="https://api.ipify.org?format=json" />
+          <p class="text-xs text-muted mt-1">HTTPS endpoint used by "Test connection" to inspect public IP and latency.</p>
+        </div>
+
+        <div class="settings-group">
+          <label class="settings-label">Workspace Binding</label>
+          <div class="proxy-checkbox-row">
+            <input type="checkbox" id="proxy-opt-per-workspace" />
+            <label for="proxy-opt-per-workspace">Allow one proxy profile per workspace</label>
+          </div>
+          <div id="proxy-workspace-select-row" class="modal-field mt-2 hidden">
+            <label class="text-xs text-muted">Assign profile for current workspace (<span id="proxy-current-ws-name">Workspace</span>):</label>
+            <select id="proxy-workspace-profile-select" class="modal-select"></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="btn-done-proxy-settings" class="modal-btn primary">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script src="src/renderer/jsonViewer.js"></script>
   <script src="src/renderer/toolkitPanel.js"></script>
   <script src="src/renderer/aiPanel.js"></script>
+  <script src="src/renderer/proxyControl.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

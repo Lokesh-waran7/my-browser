@@ -85,6 +85,16 @@ contextBridge.exposeInMainWorld('browserAPI', {
   openWindowDevTools: () => ipcRenderer.invoke('window:openDevTools'),
   logError: (errorInfo) => ipcRenderer.invoke('app:logRendererError', errorInfo),
 
+  // Proxy / VPN Management (Step 9)
+  getProxyState: () => ipcRenderer.invoke('proxy:getState'),
+  setProxyMode: (mode, profileId) => ipcRenderer.invoke('proxy:setMode', { mode, profileId }),
+  saveManualProxy: (config) => ipcRenderer.invoke('proxy:saveManualProxy', config),
+  saveProxyProfile: (profile) => ipcRenderer.invoke('proxy:saveProfile', profile),
+  deleteProxyProfile: (profileId) => ipcRenderer.invoke('proxy:deleteProfile', profileId),
+  updateProxySettings: (settings) => ipcRenderer.invoke('proxy:updateSettings', settings),
+  testProxyConnection: (customEndpoint) => ipcRenderer.invoke('proxy:testConnection', customEndpoint),
+  resetProxyKillSwitch: () => ipcRenderer.invoke('proxy:resetKillSwitch'),
+
   // Event Subscriptions
   onTabCreated: (callback) => {
     ipcRenderer.on('tab:created', (e, data) => callback(data));
@@ -127,6 +137,9 @@ contextBridge.exposeInMainWorld('browserAPI', {
   },
   onAiModelNotice: (callback) => {
     ipcRenderer.on('ai:modelNotice', (e, data) => callback(data));
+  },
+  onProxyStateChanged: (callback) => {
+    ipcRenderer.on('proxy:stateChanged', (e, data) => callback(data));
   },
 });
 

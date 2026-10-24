@@ -16,6 +16,7 @@ const privacyManager = require('./src/main/privacyManager');
 const ApiTester = require('./src/main/apiTester');
 const NotesManager = require('./src/main/notesManager');
 const AIManager = require('./src/main/ai/aiManager');
+const ProxyManager = require('./src/main/proxyManager');
 const setupIpcHandlers = require('./src/main/ipcHandlers');
 const logger = require('./src/main/logger');
 
@@ -35,6 +36,7 @@ let tabSuspender = null;
 let apiTester = null;
 let notesManager = null;
 let aiManager = null;
+let proxyManager = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -60,8 +62,12 @@ function createWindow() {
   notesManager = new NotesManager();
   aiManager = new AIManager(mainWindow, tabManager, workspaceManager);
   aiManager.init();
+  proxyManager = new ProxyManager(mainWindow);
+  proxyManager.init();
 
   tabManager.tabSuspender = tabSuspender;
+  tabManager.proxyManager = proxyManager;
+  proxyManager.tabManager = tabManager;
   splitManager.tabSuspender = tabSuspender;
   workspaceManager.tabSuspender = tabSuspender;
 
@@ -149,6 +155,9 @@ function createWindow() {
   // Workspace state updates
   workspaceManager.onWorkspaceChanged = (state) => {
     mainWindow.webContents.send('workspace:stateChanged', state);
+    if (proxyManager && state) {
+      proxyManager.applyForWorkspace(state.activeWorkspaceId);
+    }
   };
 
   // Register all IPC handlers
@@ -161,7 +170,8 @@ function createWindow() {
     tabSuspender,
     apiTester,
     notesManager,
-    aiManager
+    aiManager,
+    proxyManager
   );
 
   mainWindow.loadFile('index.html');

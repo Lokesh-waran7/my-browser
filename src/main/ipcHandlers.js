@@ -11,7 +11,8 @@ function setupIpcHandlers(
   tabSuspender,
   apiTester,
   notesManager,
-  aiManager
+  aiManager,
+  proxyManager
 ) {
   // Tab Management
   ipcMain.handle('tab:create', (event, url, activate) => {
@@ -389,6 +390,49 @@ function setupIpcHandlers(
 
   ipcMain.handle('app:logRendererError', (event, errorInfo) => {
     logger.log('Renderer', errorInfo);
+  });
+
+  // Proxy / VPN Management (Step 9)
+  ipcMain.handle('proxy:getState', () => {
+    return proxyManager ? proxyManager.getPublicState() : null;
+  });
+
+  ipcMain.handle('proxy:setMode', async (event, { mode, profileId } = {}) => {
+    if (!proxyManager) throw new Error('Proxy manager not initialized');
+    if (!mode || typeof mode !== 'string') throw new Error('Invalid mode parameter');
+    return await proxyManager.setMode(mode, profileId);
+  });
+
+  ipcMain.handle('proxy:saveManualProxy', async (event, config) => {
+    if (!proxyManager) throw new Error('Proxy manager not initialized');
+    return await proxyManager.saveManualProxy(config);
+  });
+
+  ipcMain.handle('proxy:saveProfile', async (event, profile) => {
+    if (!proxyManager) throw new Error('Proxy manager not initialized');
+    return await proxyManager.saveProfile(profile);
+  });
+
+  ipcMain.handle('proxy:deleteProfile', async (event, profileId) => {
+    if (!proxyManager) throw new Error('Proxy manager not initialized');
+    if (!profileId || typeof profileId !== 'string') throw new Error('Invalid profile ID');
+    return await proxyManager.deleteProfile(profileId);
+  });
+
+  ipcMain.handle('proxy:updateSettings', async (event, settings) => {
+    if (!proxyManager) throw new Error('Proxy manager not initialized');
+    return await proxyManager.updateSettings(settings);
+  });
+
+  ipcMain.handle('proxy:testConnection', async (event, customEndpoint) => {
+    if (!proxyManager) throw new Error('Proxy manager not initialized');
+    return await proxyManager.testConnection(customEndpoint);
+  });
+
+  ipcMain.handle('proxy:resetKillSwitch', async () => {
+    if (!proxyManager) throw new Error('Proxy manager not initialized');
+    await proxyManager.resetKillSwitch();
+    return proxyManager.getPublicState();
   });
 }
 

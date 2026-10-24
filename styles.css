@@ -2734,3 +2734,357 @@ body.toolkit-resizing .toolkit-resizer {
   color: #ef4444;
 }
 
+
+
+/* Proxy / Privacy Routing Styles (Step 9) */
+.proxy-button-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.proxy-status-dot {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid #18181b;
+  pointer-events: none;
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+.proxy-status-dot.off {
+  background-color: #71717a;
+}
+
+.proxy-status-dot.applying {
+  background-color: #3b82f6;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.7);
+  animation: pulse 1s infinite;
+}
+
+.proxy-status-dot.connected {
+  background-color: #22c55e;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+}
+
+.proxy-status-dot.error {
+  background-color: #ef4444;
+}
+
+.proxy-status-dot.kill-switch {
+  background-color: #dc2626;
+  box-shadow: 0 0 6px rgba(220, 38, 38, 0.8);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+/* Proxy Dropdown */
+.proxy-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 320px;
+  background-color: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.55);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.proxy-dropdown-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid #27272a;
+  background-color: #121214;
+}
+
+.proxy-dropdown-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.proxy-dropdown-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f4f4f5;
+}
+
+.proxy-status-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.proxy-status-badge.off {
+  background-color: rgba(113, 113, 122, 0.2);
+  color: #a1a1aa;
+  border: 1px solid #3f3f46;
+}
+
+.proxy-status-badge.applying {
+  background-color: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.5);
+  animation: pulse 1.2s infinite;
+}
+
+.proxy-status-badge.connected {
+  background-color: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.proxy-status-badge.error {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.proxy-status-badge.kill-switch {
+  background-color: rgba(220, 38, 38, 0.25);
+  color: #fca5a5;
+  border: 1px solid #ef4444;
+}
+
+.proxy-honest-label {
+  font-size: 11px;
+  color: #94a3b8;
+  line-height: 1.35;
+  margin-top: 4px;
+  background: rgba(30, 41, 59, 0.35);
+  padding: 6px 8px;
+  border-radius: 4px;
+  border-left: 3px solid #3b82f6;
+}
+
+.proxy-dropdown-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.proxy-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.proxy-toggle-label {
+  font-size: 12px;
+  color: #d4d4d8;
+  font-weight: 500;
+}
+
+.proxy-select-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.proxy-active-details {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #09090b;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #27272a;
+}
+
+.proxy-killswitch-warning {
+  background-color: rgba(220, 38, 38, 0.15);
+  border: 1px solid #ef4444;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: #fca5a5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.proxy-test-box {
+  background-color: #09090b;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+}
+
+.proxy-test-warning-banner {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.proxy-test-warning-banner.leak {
+  background-color: rgba(239, 68, 68, 0.2);
+  border: 1px solid #ef4444;
+  color: #fca5a5;
+  font-weight: 500;
+}
+
+.proxy-test-warning-banner.protected {
+  background-color: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  color: #4ade80;
+}
+
+.proxy-test-warning-banner.error {
+  background-color: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fcd34d;
+}
+
+.proxy-inline-error {
+  background-color: rgba(239, 68, 68, 0.15);
+  border: 1px solid #ef4444;
+  color: #fca5a5;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  margin-bottom: 8px;
+}
+
+.proxy-dropdown-footer {
+  padding: 8px 14px;
+  border-top: 1px solid #27272a;
+  background-color: #121214;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Proxy Settings Modal */
+.proxy-settings-card {
+  max-width: 580px;
+  width: 100%;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.proxy-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.proxy-honest-notice {
+  background: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #93c5fd;
+  line-height: 1.4;
+}
+
+.proxy-mode-tabs {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.proxy-mode-tab {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  background-color: #27272a;
+  border: 1px solid #3f3f46;
+  color: #a1a1aa;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+
+.proxy-mode-tab:hover {
+  color: #fff;
+  background-color: #3f3f46;
+}
+
+.proxy-mode-tab.active {
+  background-color: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+  font-weight: 600;
+}
+
+.proxy-profile-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.proxy-profiles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.proxy-profile-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background-color: #09090b;
+  border: 1px solid #27272a;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.proxy-profile-item.active-profile {
+  border-color: #3b82f6;
+  background-color: rgba(59, 130, 246, 0.08);
+}
+
+.proxy-profile-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.proxy-profile-editor {
+  background-color: #121214;
+  border: 1px solid #333338;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 10px;
+}
+
+.proxy-checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: #e4e4e7;
+  cursor: pointer;
+}
+
+.proxy-checkbox-row input[type="checkbox"] {
+  margin-top: 2px;
+  cursor: pointer;
+  accent-color: #3b82f6;
+}
