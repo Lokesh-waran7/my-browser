@@ -3,6 +3,27 @@ const { GoogleGenAI } = require('@google/genai');
 const netdebugLogger = require('../netdebugLogger');
 
 /**
+ * Checks whether a given model supports reasoning/thinking configuration.
+ * Models like Flash-Lite do not support thinkingConfig and will reject it with HTTP 400.
+ */
+function modelSupportsThinking(modelId) {
+  if (!modelId || typeof modelId !== 'string') return false;
+  const lower = modelId.toLowerCase();
+  // Flash-Lite and Nano models never support thinkingConfig
+  if (lower.includes('flash-lite') || lower.includes('lite') || lower.includes('nano')) {
+    return false;
+  }
+  // Explicit thinking models
+  if (lower.includes('thinking')) return true;
+  // Gemini 2.5 Flash / Pro and Gemini 3.7+ Flash / Pro
+  if (lower.includes('2.5-flash') || lower.includes('2.5-pro')) return true;
+  if (lower.includes('3.7-flash') || lower.includes('3.7-pro')) return true;
+  if (lower.includes('3.8-flash') || lower.includes('3.8-pro')) return true;
+  // Omit if unsure
+  return false;
+}
+
+/**
  * Base AI Provider Interface to allow adding other providers (Anthropic, OpenAI, Ollama) later.
  */
 class AIProvider {
@@ -64,6 +85,33 @@ class GeminiProvider extends AIProvider {
         details: rawDetails,
         status: 404,
         isRetireOrNotFound: true,
+      };
+    }
+
+    if (status === 400 || lower.includes('400') || lower.includes('invalid_argument') || lower.includes('invalid argument')) {
+      let fieldMsg = raw;
+      try {
+        if (typeof err === 'object' && err !== null) {
+          if (err.error && err.error.message) {
+            fieldMsg = err.error.message;
+          } else if (err.message) {
+            fieldMsg = err.message;
+          }
+          if (err.error && Array.isArray(err.error.details) && err.error.details.length > 0) {
+            const detailStrs = err.error.details.map((d) => (typeof d === 'object' ? JSON.stringify(d) : String(d)));
+            fieldMsg += '\nDetails: ' + detailStrs.join('; ');
+          }
+        }
+      } catch (_) {}
+
+      netdebugLogger.log('AI:400ErrorBody', `HTTP 400 Invalid Argument: ${fieldMsg}`, { rawDetails });
+
+      return {
+        type: 'invalid_argument',
+        message: `Request contains an invalid argument (HTTP 400): ${fieldMsg}`,
+        details: fieldMsg + (rawDetails !== fieldMsg ? '\n\nFull error:\n' + rawDetails : ''),
+        status: 400,
+        isRetireOrNotFound: false,
       };
     }
 
@@ -260,18 +308,30 @@ class GeminiProvider extends AIProvider {
       if (systemInstruction) {
         config.systemInstruction = systemInstruction;
       }
-      // Apply thinking budget when specified
-      if (thinkingBudget !== null && typeof thinkingBudget === 'number') {
+      // Apply thinking budget ONLY if supported by model (e.g. Flash-Lite rejects thinkingConfig)
+      const canThink = modelSupportsThinking(this.model);
+      if (canThink && thinkingBudget !== null && typeof thinkingBudget === 'number') {
         config.thinkingConfig = { thinkingBudget };
       }
+
+      // Log request SHAPE (no message content or keys)
+      const rolesSeq = formattedContents.map((c) => c.role).join(' -> ');
+      netdebugLogger.log(
+        'AI:RequestShape',
+        `Model: ${this.model} | MessagesCount: ${formattedContents.length} | Roles: [${rolesSeq}] | Config: ${JSON.stringify({
+          thinkingConfig: config.thinkingConfig || 'omitted (unsupported or unset)',
+          systemInstruction: config.systemInstruction ? 'set' : 'unset',
+          temperature: 'default',
+          safetySettings: 'default',
+          tools: 'none',
+        })}`
+      );
 
       const responseStream = await this.client.models.generateContentStream({
         model: this.model,
         contents: formattedContents,
         config,
       });
-
-      const t_send = Date.now();
 
       // 30s per-chunk timeout controller
       let chunkTimeoutTimer = null;
@@ -431,4 +491,5 @@ module.exports = {
   AIProvider,
   GeminiProvider,
   createAIProvider,
+  modelSupportsThinking,
 };

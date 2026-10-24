@@ -2626,6 +2626,12 @@ body.toolkit-resizing .toolkit-resizer {
   color: #fef08a;
 }
 
+.ai-error-box.invalid {
+  background-color: rgba(249, 115, 22, 0.15);
+  border: 1px solid #f97316;
+  color: #fdba74;
+}
+
 .ai-quota-action-box {
   margin-top: 8px;
   padding-top: 8px;

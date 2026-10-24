@@ -866,22 +866,28 @@
       this.btnStop.classList.add('hidden');
 
       if (this.streamingBodyEl) {
-        let detailsHtml = '';
-        if (details) {
-          detailsHtml = `
-            <details class="ai-error-details">
-              <summary class="ai-error-details-summary">Details</summary>
-              <pre class="ai-error-details-raw">${escapeHtml(details)}</pre>
-            </details>
-          `;
-        }
-
         const isQuota = type === 'quota_exceeded' ||
                         (errorMsg && (
                           errorMsg.toLowerCase().includes('quota') ||
                           errorMsg.toLowerCase().includes('429') ||
                           errorMsg.toLowerCase().includes('resource_exhausted')
                         ));
+        const is400 = type === 'invalid_argument' ||
+                      (errorMsg && (
+                        errorMsg.includes('400') ||
+                        errorMsg.toLowerCase().includes('invalid_argument') ||
+                        errorMsg.toLowerCase().includes('invalid argument')
+                      ));
+
+        let detailsHtml = '';
+        if (details) {
+          detailsHtml = `
+            <details class="ai-error-details" ${is400 ? 'open' : ''}>
+              <summary class="ai-error-details-summary">${is400 ? 'Field-Level Error Details (HTTP 400)' : 'Details'}</summary>
+              <pre class="ai-error-details-raw">${escapeHtml(details)}</pre>
+            </details>
+          `;
+        }
 
         let quotaButtonHtml = '';
         if (isQuota) {
@@ -896,8 +902,8 @@
         }
 
         this.streamingBodyEl.innerHTML = `
-          <div class="ai-error-box ${isQuota ? 'quota' : ''}">
-            <div class="ai-error-summary">⚠️ <strong>${isQuota ? 'Quota Limit Reached:' : 'Error:'}</strong> ${escapeHtml(errorMsg || 'Failed to generate response.')}</div>
+          <div class="ai-error-box ${isQuota ? 'quota' : is400 ? 'invalid' : ''}">
+            <div class="ai-error-summary">⚠️ <strong>${isQuota ? 'Quota Limit Reached:' : is400 ? 'Invalid Request (HTTP 400):' : 'Error:'}</strong> ${escapeHtml(errorMsg || 'Failed to generate response.')}</div>
             ${quotaButtonHtml}
             ${detailsHtml}
           </div>

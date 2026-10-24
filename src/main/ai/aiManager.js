@@ -2,26 +2,31 @@
 const { app, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { createAIProvider } = require('./aiProvider');
+const { createAIProvider, modelSupportsThinking } = require('./aiProvider');
 const { extractPageContent } = require('./pageExtractor');
+const { sanitizeHistory } = require('./historySanitizer');
 
 // ── AI Debug Logger ──────────────────────────────────────────────────────────
-const AI_DEBUG_LOG = path.join(
-  (app && app.getPath ? app.getPath('userData') : require('os').tmpdir()),
-  '..', '..', 'my-browser', 'logs', 'ai-debug.log'
-);
 let _aiLogDir = null;
 function aiDebugLog(tag, msg, extra = {}) {
   try {
     if (!_aiLogDir) {
-      // Resolve log path relative to project root once app is ready
-      const logDir = path.join(app.getPath('userData'), '..', '..', 'my-browser', 'logs');
-      if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-      _aiLogDir = logDir;
+      _aiLogDir = path.join(process.cwd(), 'logs');
+      if (!fs.existsSync(_aiLogDir)) fs.mkdirSync(_aiLogDir, { recursive: true });
     }
     const logPath = path.join(_aiLogDir, 'ai-debug.log');
-    const extraStr = Object.keys(extra).length ? ' ' + JSON.stringify(extra) : '';
-    const line = `${new Date().toISOString()} [${tag}] ${msg}${extraStr}\n`;
+    let extraStr = '';
+    if (extra && Object.keys(extra).length) {
+      try {
+        extraStr = ' ' + JSON.stringify(extra);
+      } catch (_) {
+        extraStr = ' ' + String(extra);
+      }
+    }
+    let line = `${new Date().toISOString()} [${tag}] ${msg}${extraStr}\n`;
+    // Sanitize any API key or secret
+    line = line.replace(/AIza[0-9A-Za-z-_]{35}/g, 'AIza[MASKED]');
+    line = line.replace(/([?&](?:key|api_key)=)[^&\s]+/gi, '$1[MASKED]');
     fs.appendFileSync(logPath, line, 'utf-8');
   } catch (_) { /* never throw from logger */ }
 }
@@ -672,10 +677,13 @@ ${prompt}`;
     };
     this.appendMessage(workspaceId, userMessage);
 
-    recentHistory.push({
-      role: 'user',
-      content: fullUserPrompt,
-    });
+    // Sanitize conversation history: drop empty strings, drop error bubbles & placeholders,
+    // merge consecutive same-role messages, ensure starts with user, strictly alternate, cap to 10 messages.
+    const rawHistory = [
+      ...currentHistory.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user', content: fullUserPrompt },
+    ];
+    const sanitizedHistory = sanitizeHistory(rawHistory, 10);
 
     // 3. System prompt with explicit untrusted data bounds
     const systemInstruction = `You are an expert AI software developer and pair programming assistant integrated into Coder Browser.
@@ -694,16 +702,52 @@ SECURITY & ACCURACY RULES:
     while (attempt < maxAttempts) {
       attempt++;
 
-      // Ensure active model is determined
-      if (!this.settings.model || retiredModels.includes(this.settings.model)) {
-        const available = await this.getAvailableModels();
-        this.settings.model = this.resolveBestModel(available, retiredModels);
+      // Verify the selected model name matches an entry returned by models.list
+      const available = await this.getAvailableModels();
+      const validIds = new Set(available.map((m) => (m.id || '').toLowerCase()));
+      let activeModel = this.settings.model;
+
+      if (!activeModel || !validIds.has(activeModel.toLowerCase())) {
+        const oldModel = activeModel || '(none)';
+        const fallback = this.resolveBestModel(available, retiredModels);
+        this.settings.model = fallback;
         this.saveSettings();
+        activeModel = fallback;
+
+        const noticeMsg = `Selected model "${oldModel}" is not in models.list. Switched to "${fallback}".`;
+        console.warn(`[AIManager] ${noticeMsg}`);
+        aiDebugLog('AI:ModelVerifyFallback', noticeMsg);
+
+        if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+          this.mainWindow.webContents.send('ai:modelNotice', {
+            type: 'invalid_model_fallback',
+            oldModel,
+            newModel: fallback,
+            message: noticeMsg,
+          });
+        }
       }
 
-      const activeModel = this.settings.model;
       this.recordRequest(activeModel);
-      const thinkingBudget = speedToThinkingBudget(this.settings.responseSpeed || 'fast');
+
+      // Only apply thinking/budget options that the selected model supports
+      const canThink = modelSupportsThinking(activeModel);
+      const thinkingBudget = canThink ? speedToThinkingBudget(this.settings.responseSpeed || 'fast') : null;
+
+      // Log request SHAPE (no user secrets, no key, no raw message text)
+      const rolesSeq = sanitizedHistory.map((m) => m.role).join(' -> ');
+      aiDebugLog('AI:RequestStructure', `Model: ${activeModel}`, {
+        messagesCount: sanitizedHistory.length,
+        roles: rolesSeq,
+        configFields: {
+          thinkingConfig: canThink && thinkingBudget !== null ? { thinkingBudget } : 'omitted (unsupported or unset)',
+          systemInstruction: systemInstruction ? 'set' : 'unset',
+          temperature: 'default',
+          safetySettings: 'default',
+          tools: 'none',
+        },
+      });
+
       const provider = createAIProvider('gemini', {
         apiKey: this.cachedApiKey,
         model: activeModel,
@@ -719,7 +763,7 @@ SECURITY & ACCURACY RULES:
       try {
         let t_firstChunk = null;
         const fullResponse = await provider.generateStream({
-          messages: recentHistory,
+          messages: sanitizedHistory,
           systemInstruction,
           signal: abortController.signal,
           thinkingBudget,
@@ -762,8 +806,18 @@ SECURITY & ACCURACY RULES:
         clearTimeout(timeoutId);
         this.activeStreams.delete(streamId);
 
+        // Log the full error body (especially HTTP 400 invalid argument)
+        aiDebugLog('AI:ErrorBody', `HTTP ${err.status || 'unknown'}: ${err.message}`, {
+          details: err.details || null,
+          type: err.type || null,
+        });
+
+        // 400 INVALID_ARGUMENT or 429 QUOTA errors must NEVER be auto-retried
+        const is400 = err.status === 400 || (err.message && err.message.toLowerCase().includes('400')) || err.type === 'invalid_argument';
+        const is429 = err.status === 429 || (err.message && err.message.toLowerCase().includes('429')) || err.type === 'quota_exceeded';
+
         // Check if error is 404 / retired model and we can retry once
-        if (attempt === 1 && this.isRetireOr404(err)) {
+        if (!is400 && !is429 && attempt === 1 && this.isRetireOr404(err)) {
           console.warn(`[AIManager] Model "${activeModel}" was retired or not found. Refreshing models and switching...`);
           retiredModels.push(activeModel);
 
@@ -797,12 +851,11 @@ SECURITY & ACCURACY RULES:
         const errorMessage = err.message || 'An error occurred while generating response.';
         const technicalDetails = err.details || err.stack || String(err);
         const errType = err.type || (
-          err.status === 429 ||
-          errorMessage.toLowerCase().includes('quota') ||
-          errorMessage.toLowerCase().includes('429') ||
-          errorMessage.toLowerCase().includes('resource_exhausted')
+          is429
             ? 'quota_exceeded'
-            : 'general'
+            : is400
+              ? 'invalid_argument'
+              : 'general'
         );
 
         if (this.mainWindow && !this.mainWindow.isDestroyed()) {
