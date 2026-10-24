@@ -349,9 +349,12 @@ function setupIpcHandlers(
   ipcMain.handle('tab:getSelectedText', async () => {
     if (!tabManager) return '';
     const activeTab = tabManager.getTab(tabManager.activeTabId);
-    if (!activeTab || !activeTab.view || !activeTab.view.webContents) return '';
+    if (!activeTab || !activeTab.view || !activeTab.view.webContents || activeTab.view.webContents.isDestroyed()) return '';
+    const wc = activeTab.view.webContents;
+    const url = wc.getURL() || '';
+    if (!url.startsWith('http:') && !url.startsWith('https:')) return '';
     try {
-      return await activeTab.view.webContents.executeJavaScript('window.getSelection().toString()');
+      return await wc.executeJavaScript('window.getSelection() ? window.getSelection().toString() : ""');
     } catch (e) {
       return '';
     }

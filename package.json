@@ -7,6 +7,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node test/test_step10_partA.js && node test/test_step10_partB.js && node test/test_step10_partC.js && node test/test_step10_partD.js",
+    "test:clean": "electron test/verify_warnings_clean.js",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:portable": "electron-builder --win portable",

@@ -144,38 +144,48 @@ class TabSuspender {
     if (!tab.view || !tab.view.webContents) return false;
 
     const wc = tab.view.webContents;
+    if (!wc || wc.isDestroyed()) return false;
 
     // 6. Never suspend tabs playing audio or media
     if (wc.isCurrentlyAudible && wc.isCurrentlyAudible()) return false;
 
-    // Check HTML5 video/audio playing state
-    try {
-      const isMediaPlaying = await wc.executeJavaScript(`(() => {
-        const media = Array.from(document.querySelectorAll('video, audio'));
-        return media.some(m => !m.paused && !m.ended && m.currentTime > 0);
-      })()`);
-      if (isMediaPlaying) return false;
-    } catch (e) {}
+    const url = wc.getURL() || tab.url || '';
+    if ((url.startsWith('http:') || url.startsWith('https:')) && !wc.isLoading()) {
+      // Check HTML5 video/audio playing state
+      try {
+        const isMediaPlaying = await Promise.race([
+          wc.executeJavaScript(`(() => {
+            const media = Array.from(document.querySelectorAll('video, audio'));
+            return media.some(m => !m.paused && !m.ended && m.currentTime > 0);
+          })()`),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 500)),
+        ]);
+        if (isMediaPlaying) return false;
+      } catch (e) {}
 
-    // 7. Never suspend tabs with unsaved form input
-    try {
-      const hasFormInput = await wc.executeJavaScript(`(() => {
-        const textInputs = document.querySelectorAll(
-          'input[type="text"], input[type="search"], input[type="email"], input[type="password"], input[type="tel"], input[type="url"], input[type="number"], input:not([type]), textarea'
-        );
-        for (const el of textInputs) {
-          if (el.value && el.value.trim() !== '' && el.value !== el.defaultValue) return true;
+      // 7. Never suspend tabs with unsaved form input
+      try {
+        const hasFormInput = await Promise.race([
+          wc.executeJavaScript(`(() => {
+            const textInputs = document.querySelectorAll(
+              'input[type="text"], input[type="search"], input[type="email"], input[type="password"], input[type="tel"], input[type="url"], input[type="number"], input:not([type]), textarea'
+            );
+            for (const el of textInputs) {
+              if (el.value && el.value.trim() !== '' && el.value !== el.defaultValue) return true;
+            }
+            const checkInputs = document.querySelectorAll('input[type="checkbox"], input[type="radio"]');
+            for (const el of checkInputs) {
+              if (el.checked !== el.defaultChecked) return true;
+            }
+            return false;
+          })()`),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 500)),
+        ]);
+        if (hasFormInput) {
+          return false;
         }
-        const checkInputs = document.querySelectorAll('input[type="checkbox"], input[type="radio"]');
-        for (const el of checkInputs) {
-          if (el.checked !== el.defaultChecked) return true;
-        }
-        return false;
-      })()`);
-      if (hasFormInput) {
-        return false;
-      }
-    } catch (e) {}
+      } catch (e) {}
+    }
 
     return true;
   }
@@ -192,15 +202,24 @@ class TabSuspender {
       if (!eligible) return false;
     }
 
-    // 1. Capture scroll position
-    if (tab.view && tab.view.webContents) {
-      try {
-        tab.scrollPosition = await tab.view.webContents.executeJavaScript(`({
-          x: window.scrollX || window.pageXOffset || 0,
-          y: window.scrollY || window.pageYOffset || 0
-        })`);
-      } catch (e) {
-        tab.scrollPosition = tab.scrollPosition || { x: 0, y: 0 };
+    // 1. Capture scroll position and clean up view
+    if (tab.view) {
+      if (tab.view.webContents && !tab.view.webContents.isDestroyed()) {
+        const wc = tab.view.webContents;
+        const currentUrl = wc.getURL() || tab.url || '';
+        if ((currentUrl.startsWith('http:') || currentUrl.startsWith('https:')) && !wc.isLoading()) {
+          try {
+            tab.scrollPosition = await Promise.race([
+              wc.executeJavaScript(`({
+                x: window.scrollX || window.pageXOffset || 0,
+                y: window.scrollY || window.pageYOffset || 0
+              })`),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 500)),
+            ]);
+          } catch (e) {
+            tab.scrollPosition = tab.scrollPosition || { x: 0, y: 0 };
+          }
+        }
       }
 
       // Detach from main window
@@ -210,10 +229,13 @@ class TabSuspender {
         } catch (e) {}
       }
 
-      // Destroy WebContentsView to free RAM
-      try {
-        tab.view.webContents.close();
-      } catch (e) {}
+      // Remove ALL event listeners and destroy WebContentsView to free RAM
+      if (tab.view.webContents && !tab.view.webContents.isDestroyed()) {
+        try {
+          tab.view.webContents.removeAllListeners();
+          tab.view.webContents.close();
+        } catch (e) {}
+      }
     }
 
     tab.view = null;

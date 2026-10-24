@@ -4,6 +4,8 @@ const fs = require('fs');
 const path = require('path');
 const { app, session } = require('electron');
 const { ElectronBlocker } = require('@ghostery/adblocker-electron');
+const tld = require('tldts-experimental');
+const logger = require('./logger');
 
 class PrivacyManager {
   constructor() {
@@ -176,7 +178,80 @@ class PrivacyManager {
         });
       };
 
-      // 6. Enable blocking in the target session (registers preload script & webRequest hooks)
+      // 6. Hook cosmetic filters and scriptlet injection:
+      // a) Ensure webContents is alive and not destroyed
+      // b) Skip non-http/https URLs (about:blank, data:, internal browser://, file://)
+      // c) Fix root cause in scriptlets: wrap each in isolated IIFE to prevent
+      //    "SyntaxError: Identifier 'JSONPath' has already been declared" when multiple scriptlets declare the same identifier
+      // d) Catch any async executeJavaScript and insertCSS rejections so they never trigger unhandledRejection
+      this.blocker.onInjectCosmeticFilters = async (event, url, filterData) => {
+        if (!event || !event.sender || event.sender.isDestroyed()) return;
+        if (!url || typeof url !== 'string') return;
+
+        let parsedUrl;
+        try {
+          parsedUrl = new URL(url);
+        } catch (_) {
+          return;
+        }
+
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+          return;
+        }
+
+        try {
+          const parsedDomain = tld.parse(url);
+          const hostname = parsedDomain.hostname || '';
+          const domain = parsedDomain.domain || '';
+          const isBase = filterData === undefined;
+
+          const { active, styles, scripts } = this.blocker.getCosmeticsFilters({
+            domain,
+            hostname,
+            url,
+            classes: filterData?.classes,
+            hrefs: filterData?.hrefs,
+            ids: filterData?.ids,
+            getBaseRules: isBase,
+            getInjectionRules: isBase,
+            getExtendedRules: false,
+            getRulesFromHostname: isBase,
+            getRulesFromDOM: !isBase,
+            callerContext: {
+              frameId: event.frameId,
+              processId: event.processId,
+              lifecycle: filterData?.lifecycle,
+            },
+          });
+
+          if (active === false) return;
+
+          if (styles && styles.length > 0 && !event.sender.isDestroyed()) {
+            event.sender.insertCSS(styles, { cssOrigin: 'user' }).catch((err) => {
+              logger.log('PrivacyManager:CosmeticCSS', new Error(`insertCSS failed on ${url}: ${err.message}`));
+            });
+          }
+
+          if (scripts && scripts.length > 0 && !event.sender.isDestroyed()) {
+            // Bundle all scriptlets into a single script with individual IIFE try/catch blocks.
+            // This prevents:
+            // 1) Electron's internal waitTillCanExecuteJavaScript from adding 500+ did-stop-loading listeners
+            // 2) Top-level variable identifier collisions (e.g. JSONPath) across multiple scriptlets
+            // 3) Massive IPC round-trip overhead on heavy pages like YouTube
+            const bundledScript = scripts
+              .map((script) => `(() => {\n  try {\n${script}\n  } catch (e) {}\n})();`)
+              .join('\n');
+
+            event.sender.executeJavaScript(bundledScript, true).catch((err) => {
+              logger.log('PrivacyManager:CosmeticScriptlet', new Error(`Scriptlet execution failed on ${url}: ${err.message}`));
+            });
+          }
+        } catch (err) {
+          logger.log('PrivacyManager:onInjectCosmeticFilters', new Error(`Failed to inject cosmetic filters for ${url}: ${err.message}`));
+        }
+      };
+
+      // 7. Enable blocking in the target session (registers preload script & webRequest hooks)
       this.blocker.enableBlockingInSession(targetSession);
       console.log('[PrivacyManager] Blocker enabled in session with cosmetic filtering and scriptlets active.');
     } catch (err) {

@@ -1,6 +1,7 @@
 // JSON Page Handler - Injects pretty JSON viewer into tabs that load application/json
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 
 class JsonPageHandler {
   constructor() {
@@ -24,9 +25,27 @@ class JsonPageHandler {
    * Attaches JSON auto-detection to a WebContents instance.
    */
   attach(webContents) {
-    if (!webContents) return;
+    if (!webContents || webContents.isDestroyed()) return;
+    if (webContents.__jsonPageHandlerAttached) return;
+    webContents.__jsonPageHandlerAttached = true;
 
     webContents.on('did-finish-load', async () => {
+      if (!webContents || webContents.isDestroyed()) return;
+
+      const url = webContents.getURL();
+      if (!url) return;
+
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(url);
+      } catch (_) {
+        return;
+      }
+
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        return;
+      }
+
       try {
         const isJson = await webContents.executeJavaScript(`(() => {
           if (window.__jsonViewerInjected) return false;
@@ -87,22 +106,28 @@ class JsonPageHandler {
           `);
 
           // 2. Inject Viewer logic & mount onto document.body
-          await webContents.executeJavaScript(`(() => {
-            if (window.__jsonViewerInjected) return;
-            window.__jsonViewerInjected = true;
+          if (!webContents.isDestroyed()) {
+            await webContents.executeJavaScript(`(() => {
+              if (window.__jsonViewerInjected) return;
+              window.__jsonViewerInjected = true;
 
-            const rawText = (document.body.innerText || '').trim();
-            document.body.innerHTML = '';
-            
-            ${this.viewerScript}
+              const rawText = (document.body.innerText || '').trim();
+              document.body.innerHTML = '';
+              
+              ${this.viewerScript}
 
-            const container = document.createElement('div');
-            document.body.appendChild(container);
-            const viewer = new window.JsonViewer(container, { initialExpandDepth: 3 });
-            viewer.render(rawText);
-          })()`);
+              const container = document.createElement('div');
+              document.body.appendChild(container);
+              const viewer = new window.JsonViewer(container, { initialExpandDepth: 3 });
+              viewer.render(rawText);
+            })()`);
+          }
         }
-      } catch (err) {}
+      } catch (err) {
+        if (!webContents.isDestroyed()) {
+          logger.log('JsonPageHandler', new Error(`Failed to handle JSON viewer for ${url}: ${err.message}`));
+        }
+      }
     });
   }
 }

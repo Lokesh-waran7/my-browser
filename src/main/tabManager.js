@@ -34,6 +34,22 @@ class TabManager {
   setupTabView(tab, urlToLoad = null) {
     const tabId = tab.id;
 
+    // Clean up any existing view and listeners before creating a new one
+    if (tab.view) {
+      if (this.mainWindow && this.mainWindow.contentView) {
+        try {
+          this.mainWindow.contentView.removeChildView(tab.view);
+        } catch (e) {}
+      }
+      if (tab.view.webContents && !tab.view.webContents.isDestroyed()) {
+        try {
+          tab.view.webContents.removeAllListeners();
+          tab.view.webContents.close();
+        } catch (e) {}
+      }
+      tab.view = null;
+    }
+
     // Security: strict isolation for all web contents
     const view = new WebContentsView({
       webPreferences: {
@@ -57,8 +73,8 @@ class TabManager {
 
     wc.on('did-stop-loading', () => {
       tab.isLoading = false;
-      tab.canGoBack = wc.canGoBack();
-      tab.canGoForward = wc.canGoForward();
+      tab.canGoBack = wc.navigationHistory ? wc.navigationHistory.canGoBack() : wc.canGoBack();
+      tab.canGoForward = wc.navigationHistory ? wc.navigationHistory.canGoForward() : wc.canGoForward();
       if (this.onTabUpdated) this.onTabUpdated(tab);
     });
 
@@ -74,8 +90,8 @@ class TabManager {
       if (currentTitle) {
         tab.title = currentTitle;
       }
-      tab.canGoBack = wc.canGoBack();
-      tab.canGoForward = wc.canGoForward();
+      tab.canGoBack = wc.navigationHistory ? wc.navigationHistory.canGoBack() : wc.canGoBack();
+      tab.canGoForward = wc.navigationHistory ? wc.navigationHistory.canGoForward() : wc.canGoForward();
       if (this.onTabUpdated) this.onTabUpdated(tab);
       if (this.historyManager) {
         this.historyManager.addEntry(url, tab.title);
@@ -333,9 +349,13 @@ class TabManager {
         this.mainWindow.contentView.removeChildView(tab.view);
       } catch (e) {}
 
-      try {
-        tab.view.webContents.close();
-      } catch (e) {}
+      if (tab.view.webContents && !tab.view.webContents.isDestroyed()) {
+        try {
+          tab.view.webContents.removeAllListeners();
+          tab.view.webContents.close();
+        } catch (e) {}
+      }
+      tab.view = null;
     }
 
     this.tabs.delete(tabId);
@@ -429,18 +449,65 @@ class TabManager {
 
   goBack(tabId) {
     const tab = this.tabs.get(tabId);
-    if (tab && tab.view && tab.view.webContents && tab.view.webContents.canGoBack()) {
-      tab.lastActiveTime = Date.now();
-      tab.view.webContents.goBack();
+    if (tab && tab.view && tab.view.webContents && !tab.view.webContents.isDestroyed()) {
+      const wc = tab.view.webContents;
+      const canBack = wc.navigationHistory ? wc.navigationHistory.canGoBack() : wc.canGoBack();
+      if (canBack) {
+        tab.lastActiveTime = Date.now();
+        if (wc.navigationHistory && typeof wc.navigationHistory.goBack === 'function') {
+          wc.navigationHistory.goBack();
+        } else {
+          wc.goBack();
+        }
+      }
     }
   }
 
   goForward(tabId) {
     const tab = this.tabs.get(tabId);
-    if (tab && tab.view && tab.view.webContents && tab.view.webContents.canGoForward()) {
-      tab.lastActiveTime = Date.now();
-      tab.view.webContents.goForward();
+    if (tab && tab.view && tab.view.webContents && !tab.view.webContents.isDestroyed()) {
+      const wc = tab.view.webContents;
+      const canFwd = wc.navigationHistory ? wc.navigationHistory.canGoForward() : wc.canGoForward();
+      if (canFwd) {
+        tab.lastActiveTime = Date.now();
+        if (wc.navigationHistory && typeof wc.navigationHistory.goForward === 'function') {
+          wc.navigationHistory.goForward();
+        } else {
+          wc.goForward();
+        }
+      }
     }
+  }
+
+  /**
+   * Diagnostic debug check: inspects event listener counts on a tab's WebContents.
+   */
+  logTabListenerCounts(tabId) {
+    const tab = this.tabs.get(tabId);
+    if (!tab || !tab.view || !tab.view.webContents || tab.view.webContents.isDestroyed()) {
+      return null;
+    }
+    const wc = tab.view.webContents;
+    const events = [
+      'did-start-loading',
+      'did-stop-loading',
+      'did-navigate',
+      'did-navigate-in-page',
+      'did-finish-load',
+      'dom-ready',
+      'did-fail-load',
+      'page-title-updated',
+      'page-favicon-updated',
+      'focus',
+      'will-navigate',
+      'render-process-gone',
+      'context-menu',
+    ];
+    const counts = {};
+    for (const ev of events) {
+      counts[ev] = wc.listenerCount(ev);
+    }
+    return counts;
   }
 
   reload(tabId) {

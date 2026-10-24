@@ -1,4 +1,5 @@
 // Page Extractor - Extracts sanitized readable text and selection from active WebContentsView
+const logger = require('../logger');
 /**
  * Safely extracts human-readable text and selection from a WebContentsView.
  * Respects domain exclusion allowlists, local/file URL restrictions, and size bounds.
@@ -15,14 +16,17 @@ async function extractPageContent(view, restrictedDomains = []) {
   const currentUrl = wc.getURL() || '';
 
   // 1. Restriction: Local files and internal browser URLs
-  if (
-    currentUrl.startsWith('file:') ||
-    currentUrl.startsWith('browser:') ||
-    currentUrl.startsWith('chrome:') ||
-    currentUrl.startsWith('devtools:') ||
-    currentUrl === 'about:blank' ||
-    !currentUrl
-  ) {
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(currentUrl);
+  } catch (_) {
+    return {
+      allowed: false,
+      reason: 'Invalid URL for page extraction.',
+    };
+  }
+
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
     return {
       allowed: false,
       reason: 'Local and internal browser pages cannot be shared with AI for security and privacy.',
@@ -31,8 +35,7 @@ async function extractPageContent(view, restrictedDomains = []) {
 
   // 2. Restriction: User's "never share with AI" allowlist
   try {
-    const urlObj = new URL(currentUrl);
-    const hostname = urlObj.hostname.toLowerCase();
+    const hostname = parsedUrl.hostname.toLowerCase();
 
     const isExcluded = restrictedDomains.some((d) => {
       const domain = (d || '').trim().toLowerCase();
@@ -123,6 +126,7 @@ async function extractPageContent(view, restrictedDomains = []) {
       readableText,
     };
   } catch (err) {
+    logger.log('PageExtractor', new Error(`Could not extract page content from ${currentUrl}: ${err.message}`));
     return {
       allowed: false,
       reason: `Could not extract page content: ${err.message}`,

@@ -1,5 +1,6 @@
 // YouTube Ad Handler - Injects MutationObserver auto-skipper and cosmetic styles
 const config = require('../config/youtubeAdConfig');
+const logger = require('./logger');
 
 class YouTubeAdHandler {
   constructor() {
@@ -176,10 +177,20 @@ class YouTubeAdHandler {
    * Injects the auto-skipper and cosmetic rules if applicable for the given webContents and URL.
    */
   async handleNavigation(webContents, url, privacyManager) {
-    if (!webContents || !url) return;
+    if (!webContents || webContents.isDestroyed() || !url) return;
 
     try {
-      const parsedUrl = new URL(url);
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(url);
+      } catch (_) {
+        return;
+      }
+
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        return;
+      }
+
       const isYouTubeDomain = parsedUrl.hostname === 'youtube.com' || parsedUrl.hostname.endsWith('.youtube.com');
       if (!isYouTubeDomain) return;
 
@@ -189,11 +200,15 @@ class YouTubeAdHandler {
         if (!isAllowed) {
           // If disabled or allowlisted, remove cosmetic styles and exit
           try {
-            await webContents.executeJavaScript(`(() => {
-              const style = document.getElementById('__coder_yt_ad_style');
-              if (style) style.remove();
-            })()`);
-          } catch (e) {}
+            if (!webContents.isDestroyed()) {
+              await webContents.executeJavaScript(`(() => {
+                const style = document.getElementById('__coder_yt_ad_style');
+                if (style) style.remove();
+              })()`);
+            }
+          } catch (e) {
+            // Context destroyed or harmless navigation interruption
+          }
           return;
         }
       }
@@ -202,10 +217,18 @@ class YouTubeAdHandler {
       const matchesPattern = this.config.urlPatterns.some((pattern) => pattern.test(url));
       if (!matchesPattern) return;
 
-      // Inject the scriptlet into the frame
-      await webContents.executeJavaScript(this.scriptlet);
+      // Inject the scriptlet into the frame if webContents is alive
+      if (!webContents.isDestroyed()) {
+        await webContents.executeJavaScript(this.scriptlet).catch((err) => {
+          if (!webContents.isDestroyed()) {
+            logger.log('YouTubeAdHandler', new Error(`Failed to inject scriptlet for ${url}: ${err.message}`));
+          }
+        });
+      }
     } catch (err) {
-      // Ignore navigation or context destroyed errors
+      if (!webContents.isDestroyed()) {
+        logger.log('YouTubeAdHandler', new Error(`handleNavigation error for ${url}: ${err.message}`));
+      }
     }
   }
 }

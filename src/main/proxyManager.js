@@ -237,6 +237,11 @@ class ProxyManager {
    * Initializes proxy configuration on startup.
    */
   async init() {
+    if (safeStorage && typeof safeStorage.isAsyncEncryptionAvailable === 'function') {
+      this.isEncryptionAvailable = await safeStorage.isAsyncEncryptionAvailable();
+    } else {
+      this.isEncryptionAvailable = safeStorage ? safeStorage.isEncryptionAvailable() : false;
+    }
     await this.applyProxy();
   }
 
@@ -282,7 +287,7 @@ class ProxyManager {
   encryptCredential(plainText) {
     if (!plainText) return '';
     try {
-      if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      if (safeStorage && this.isEncryptionAvailable !== false) {
         return safeStorage.encryptString(plainText).toString('base64');
       } else {
         return 'RAW:' + Buffer.from(plainText).toString('base64');
@@ -303,7 +308,7 @@ class ProxyManager {
         return Buffer.from(cipherText.slice(4), 'base64').toString('utf-8');
       }
       const buf = Buffer.from(cipherText, 'base64');
-      if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      if (safeStorage && this.isEncryptionAvailable !== false) {
         return safeStorage.decryptString(buf);
       }
     } catch (err) {

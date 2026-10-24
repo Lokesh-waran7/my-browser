@@ -29,7 +29,17 @@ class AIManager {
     this.activeStreams = new Map(); // streamId -> { abortController, timeoutId }
 
     this.loadSettings();
-    this.loadApiKey();
+  }
+
+  /**
+   * Helper to check safeStorage availability asynchronously without triggering deprecation warnings.
+   */
+  async isEncryptionAvailable() {
+    if (!safeStorage) return false;
+    if (typeof safeStorage.isAsyncEncryptionAvailable === 'function') {
+      return await safeStorage.isAsyncEncryptionAvailable();
+    }
+    return typeof safeStorage.isEncryptionAvailable === 'function' ? safeStorage.isEncryptionAvailable() : false;
   }
 
   /**
@@ -37,6 +47,7 @@ class AIManager {
    */
   async init() {
     try {
+      await this.loadApiKey();
       if (this.cachedApiKey) {
         const models = await this.getAvailableModels();
         // If no model set, or current model is not found among available models, auto-select best
@@ -88,12 +99,13 @@ class AIManager {
   /**
    * Loads and decrypts API key using Electron safeStorage.
    */
-  loadApiKey() {
+  async loadApiKey() {
     try {
       if (fs.existsSync(this.keyFilePath)) {
         const encryptedBuffer = fs.readFileSync(this.keyFilePath);
+        const encAvailable = await this.isEncryptionAvailable();
 
-        if (safeStorage && safeStorage.isEncryptionAvailable()) {
+        if (encAvailable) {
           this.cachedApiKey = safeStorage.decryptString(encryptedBuffer);
         } else {
           // Fallback if system safeStorage is unavailable
@@ -127,7 +139,8 @@ class AIManager {
     }
 
     try {
-      if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      const encAvailable = await this.isEncryptionAvailable();
+      if (encAvailable) {
         const encryptedBuffer = safeStorage.encryptString(trimmed);
         fs.writeFileSync(this.keyFilePath, encryptedBuffer);
       } else {
@@ -331,7 +344,7 @@ class AIManager {
    * Returns sanitized settings safe for the renderer (never reveals raw key).
    */
   async getPublicSettings(forceRefresh = false) {
-    const isEncAvailable = !!(safeStorage && safeStorage.isEncryptionAvailable());
+    const isEncAvailable = await this.isEncryptionAvailable();
     let maskedKey = '';
     if (this.cachedApiKey) {
       const len = this.cachedApiKey.length;
