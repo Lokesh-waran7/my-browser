@@ -5,6 +5,37 @@ const fs = require('fs');
 const { createAIProvider } = require('./aiProvider');
 const { extractPageContent } = require('./pageExtractor');
 
+// ── AI Debug Logger ──────────────────────────────────────────────────────────
+const AI_DEBUG_LOG = path.join(
+  (app && app.getPath ? app.getPath('userData') : require('os').tmpdir()),
+  '..', '..', 'my-browser', 'logs', 'ai-debug.log'
+);
+let _aiLogDir = null;
+function aiDebugLog(tag, msg, extra = {}) {
+  try {
+    if (!_aiLogDir) {
+      // Resolve log path relative to project root once app is ready
+      const logDir = path.join(app.getPath('userData'), '..', '..', 'my-browser', 'logs');
+      if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+      _aiLogDir = logDir;
+    }
+    const logPath = path.join(_aiLogDir, 'ai-debug.log');
+    const extraStr = Object.keys(extra).length ? ' ' + JSON.stringify(extra) : '';
+    const line = `${new Date().toISOString()} [${tag}] ${msg}${extraStr}\n`;
+    fs.appendFileSync(logPath, line, 'utf-8');
+  } catch (_) { /* never throw from logger */ }
+}
+
+/** Maps responseSpeed setting name to thinkingBudget value. */
+function speedToThinkingBudget(speed) {
+  switch (speed) {
+    case 'fast':     return 0;    // Disable thinking tokens for fastest response
+    case 'balanced': return 512;  // Low thinking budget
+    case 'deep':     return -1;   // Unlimited (model default)
+    default:         return 0;    // Default to fast
+  }
+}
+
 class AIManager {
   constructor(mainWindow, tabManager, workspaceManager) {
     this.mainWindow = mainWindow;
@@ -22,6 +53,7 @@ class AIManager {
     this.settings = {
       provider: 'gemini',
       model: '',
+      responseSpeed: 'fast', // 'fast' | 'balanced' | 'deep'
       neverShareDomains: ['accounts.google.com', 'login.live.com', 'github.com/login', 'bank.com'],
     };
 
@@ -79,6 +111,9 @@ class AIManager {
         }
         if (Array.isArray(data.neverShareDomains)) this.settings.neverShareDomains = data.neverShareDomains;
         if (data.provider) this.settings.provider = data.provider;
+        if (data.responseSpeed && ['fast', 'balanced', 'deep'].includes(data.responseSpeed)) {
+          this.settings.responseSpeed = data.responseSpeed;
+        }
       }
     } catch (e) {
       console.warn('[AIManager] Could not load ai-settings.json, using defaults:', e.message);
@@ -365,6 +400,7 @@ class AIManager {
       maskedKey,
       encryptionAvailable: isEncAvailable,
       model: this.settings.model,
+      responseSpeed: this.settings.responseSpeed || 'fast',
       availableModels,
       neverShareDomains: [...this.settings.neverShareDomains],
     };
@@ -373,12 +409,15 @@ class AIManager {
   /**
    * Updates settings from the user settings modal.
    */
-  async updateSettings({ model, neverShareDomains, apiKey }) {
+  async updateSettings({ model, neverShareDomains, apiKey, responseSpeed }) {
     if (model) {
       this.settings.model = model;
     }
     if (Array.isArray(neverShareDomains)) {
       this.settings.neverShareDomains = neverShareDomains.map((d) => d.trim().toLowerCase()).filter(Boolean);
+    }
+    if (responseSpeed && ['fast', 'balanced', 'deep'].includes(responseSpeed)) {
+      this.settings.responseSpeed = responseSpeed;
     }
     if (apiKey !== undefined) {
       await this.setApiKey(apiKey);
@@ -512,13 +551,24 @@ class AIManager {
   /**
    * Streams a chat turn from the Gemini API and saves history.
    * Auto-recovers on 404 / retirement: refreshes models, switches to best available, saves, and retries once.
+   * Aborts any previous in-flight stream for the same workspaceId before starting.
    */
   async sendMessage({ workspaceId, prompt, pageContext = null, streamId }) {
     if (!this.cachedApiKey) {
       throw new Error('No API key configured. Please configure your Gemini API key in settings.');
     }
 
-    // 1. Prepare history and context
+    // Abort any previous stream that is still running (new message supersedes it)
+    for (const [existingId, active] of this.activeStreams.entries()) {
+      if (existingId !== streamId) {
+        try { active.abortController.abort(); } catch (_) {}
+        clearTimeout(active.timeoutId);
+        this.activeStreams.delete(existingId);
+      }
+    }
+
+    const t_send = Date.now();
+    aiDebugLog('AI:Send', `model=${this.settings.model || 'none'} speed=${this.settings.responseSpeed || 'fast'} streamId=${streamId}`);
     const currentHistory = this.getHistory(workspaceId);
     const recentHistory = currentHistory.slice(-12).map((m) => ({
       role: m.role,
@@ -578,6 +628,7 @@ SECURITY & ACCURACY RULES:
       }
 
       const activeModel = this.settings.model;
+      const thinkingBudget = speedToThinkingBudget(this.settings.responseSpeed || 'fast');
       const provider = createAIProvider('gemini', {
         apiKey: this.cachedApiKey,
         model: activeModel,
@@ -591,14 +642,23 @@ SECURITY & ACCURACY RULES:
       this.activeStreams.set(streamId, { abortController, timeoutId });
 
       try {
+        let t_firstChunk = null;
         const fullResponse = await provider.generateStream({
           messages: recentHistory,
           systemInstruction,
           signal: abortController.signal,
+          thinkingBudget,
           onChunk: (chunk) => {
+            if (!t_firstChunk) {
+              t_firstChunk = Date.now();
+              aiDebugLog('AI:FirstChunk', `ms_to_first_chunk=${t_firstChunk - t_send}ms | model=${activeModel} | budget=${thinkingBudget}`);
+            }
             if (this.mainWindow && !this.mainWindow.isDestroyed()) {
               this.mainWindow.webContents.send('ai:streamChunk', { streamId, chunk });
             }
+          },
+          onTiming: (timing) => {
+            aiDebugLog('AI:Done', `total=${timing.t_total}ms | first_chunk=${timing.ms_to_first_chunk}ms | chunks=${timing.totalChunks} | chars=${timing.totalChars} | thinkingTok=${timing.thinkingTokens} | candTok=${timing.candidateTokens} | model=${activeModel} | speed=${this.settings.responseSpeed || 'fast'}`);
           },
         });
 

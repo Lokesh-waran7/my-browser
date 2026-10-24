@@ -11,6 +11,9 @@
       this.currentStreamingText = '';
       this.pendingPageContext = null;
       this.settings = null;
+      this._thinkingInterval = null;  // interval for "Thinking..." timer
+      this._rafPending = false;       // requestAnimationFrame flush flag
+      this._pendingChunks = '';       // batched chunk text for RAF flush
 
       this.initDOMElements();
       this.bindEvents();
@@ -52,6 +55,7 @@
       this.encryptionStatus = document.getElementById('ai-encryption-status');
       this.btnDeleteKey = document.getElementById('btn-delete-ai-key');
       this.modelSelect = document.getElementById('ai-model-select');
+      this.speedSelect = document.getElementById('ai-speed-select');
       this.btnTestConnection = document.getElementById('btn-test-ai-connection');
       this.testStatusBanner = document.getElementById('ai-test-status-banner');
       this.neverShareInput = document.getElementById('ai-never-share-input');
@@ -300,6 +304,11 @@
 
       // Populate Never Share domains
       this.renderNeverShareList();
+
+      // Set response speed dropdown
+      if (this.speedSelect && this.settings.responseSpeed) {
+        this.speedSelect.value = this.settings.responseSpeed;
+      }
     }
 
     renderNeverShareList() {
@@ -345,10 +354,12 @@
     async saveSettingsFromModal() {
       const newKey = (this.apiKeyInput.value || '').trim();
       const selectedModel = this.modelSelect ? this.modelSelect.value : (this.settings && this.settings.model) || '';
+      const selectedSpeed = this.speedSelect ? this.speedSelect.value : 'fast';
 
       const updatePayload = {
         model: selectedModel,
         neverShareDomains: this.settings ? this.settings.neverShareDomains : [],
+        responseSpeed: selectedSpeed,
       };
       if (newKey) {
         updatePayload.apiKey = newKey;
@@ -682,6 +693,14 @@
           return;
         }
 
+        // If currently generating, abort it before starting a new stream
+        if (this.isGenerating && this.currentStreamId) {
+          window.browserAPI.stopAiStream(this.currentStreamId);
+          this._stopThinkingTimer();
+          this.isGenerating = false;
+          // Leave the previous streaming bubble as-is (it will have partial text)
+        }
+
         const wsId = this.activeWorkspaceId || (this.deps.getActiveWorkspaceId ? this.deps.getActiveWorkspaceId() : 'ws-default');
         const pageContext = this.pendingPageContext;
 
@@ -704,6 +723,8 @@
         this.isGenerating = true;
         this.currentStreamId = `stream-${Date.now()}`;
         this.currentStreamingText = '';
+        this._pendingChunks = '';
+        this._rafPending = false;
 
         this.btnSend.classList.add('hidden');
         this.btnStop.classList.remove('hidden');
@@ -716,7 +737,11 @@
         };
         this.streamingBubbleEl = this.appendMessageBubble(assistantMsg);
         this.streamingBodyEl = this.streamingBubbleEl.querySelector('.ai-message-body');
-        this.streamingBodyEl.innerHTML = '<span class="ai-streaming-cursor">▋</span>';
+
+        // Show "Thinking..." with elapsed timer immediately
+        this._thinkingStartTime = Date.now();
+        this.streamingBodyEl.innerHTML = '<span class="ai-thinking-label">Thinking… <span class="ai-thinking-timer" id="ai-thinking-timer-span">0s</span></span><span class="ai-streaming-cursor">▋</span>';
+        this._startThinkingTimer();
         this.scrollToBottom();
 
         // 3. Send IPC request to main process
@@ -738,31 +763,50 @@
 
     /**
      * Handles streaming chunk arriving over IPC.
+     * Uses requestAnimationFrame for batched DOM updates.
      */
     handleStreamChunk(chunk) {
       if (!this.isGenerating || !this.streamingBodyEl) return;
-      this.currentStreamingText += chunk;
 
-      if (window.markdownAPI && window.markdownAPI.render) {
-        this.streamingBodyEl.innerHTML = window.markdownAPI.render(this.currentStreamingText) + '<span class="ai-streaming-cursor">▋</span>';
-      } else {
-        this.streamingBodyEl.textContent = this.currentStreamingText;
+      // Clear "Thinking..." on first real text chunk
+      if (!this.currentStreamingText && this._thinkingInterval) {
+        this._stopThinkingTimer();
       }
-      this.attachCodeBlockCopyButtons(this.streamingBodyEl);
-      this.scrollToBottom();
+
+      this.currentStreamingText += chunk;
+      this._pendingChunks += chunk;
+
+      if (!this._rafPending) {
+        this._rafPending = true;
+        requestAnimationFrame(() => {
+          this._rafPending = false;
+          this._pendingChunks = '';
+          if (!this.streamingBodyEl) return;
+          if (window.markdownAPI && window.markdownAPI.render) {
+            this.streamingBodyEl.innerHTML = window.markdownAPI.render(this.currentStreamingText) + '<span class="ai-streaming-cursor">▋</span>';
+          } else {
+            this.streamingBodyEl.textContent = this.currentStreamingText;
+          }
+          this.attachCodeBlockCopyButtons(this.streamingBodyEl);
+          this.scrollToBottom();
+        });
+      }
     }
 
     /**
      * Handles streaming completion.
      */
     handleStreamEnd(fullText) {
+      this._stopThinkingTimer();
       this.isGenerating = false;
       this.btnSend.classList.remove('hidden');
       this.btnStop.classList.add('hidden');
 
       if (this.streamingBodyEl) {
-        const text = fullText || this.currentStreamingText;
-        if (window.markdownAPI && window.markdownAPI.render) {
+        const text = (fullText || this.currentStreamingText || '').trim();
+        if (!text) {
+          this.streamingBodyEl.innerHTML = '<span class="text-muted"><em>(No response received from model. Please verify your API key or prompt)</em></span>';
+        } else if (window.markdownAPI && window.markdownAPI.render) {
           this.streamingBodyEl.innerHTML = window.markdownAPI.render(text);
         } else {
           this.streamingBodyEl.textContent = text;
@@ -776,6 +820,7 @@
      * Handles streaming errors with user-friendly messages and expandable details toggle.
      */
     handleStreamError(errorMsg, details) {
+      this._stopThinkingTimer();
       this.isGenerating = false;
       this.btnSend.classList.remove('hidden');
       this.btnStop.classList.add('hidden');
@@ -833,7 +878,36 @@
     stopStreaming() {
       if (this.isGenerating && this.currentStreamId) {
         window.browserAPI.stopAiStream(this.currentStreamId);
+        this._stopThinkingTimer();
         this.handleStreamEnd(this.currentStreamingText);
+      }
+    }
+
+    /**
+     * Starts the "Thinking..." elapsed-time interval timer.
+     */
+    _startThinkingTimer() {
+      this._stopThinkingTimer(); // clear any existing
+      this._thinkingStartTime = Date.now();
+      this._thinkingInterval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - this._thinkingStartTime) / 1000);
+        // Update the timer span if it's still in the DOM
+        if (this.streamingBodyEl) {
+          const timerSpan = this.streamingBodyEl.querySelector('.ai-thinking-timer');
+          if (timerSpan) {
+            timerSpan.textContent = `${elapsed}s`;
+          }
+        }
+      }, 1000);
+    }
+
+    /**
+     * Stops and clears the thinking timer interval.
+     */
+    _stopThinkingTimer() {
+      if (this._thinkingInterval) {
+        clearInterval(this._thinkingInterval);
+        this._thinkingInterval = null;
       }
     }
   }

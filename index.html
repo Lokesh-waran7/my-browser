@@ -805,6 +805,17 @@
           <p class="text-xs text-muted mt-1">Automatically resolves to the newest Flash model from the API. You can override it above.</p>
         </div>
 
+        <!-- Response Speed Section -->
+        <div class="settings-group">
+          <label for="ai-speed-select" class="settings-label">Response Speed</label>
+          <select id="ai-speed-select" class="modal-select">
+            <option value="fast">⚡ Fast — No thinking tokens (fastest, default)</option>
+            <option value="balanced">⚖️ Balanced — Low thinking budget (512 tokens)</option>
+            <option value="deep">🧠 Deep — Full reasoning (slowest, most thorough)</option>
+          </select>
+          <p class="text-xs text-muted mt-1">Controls whether the model uses reasoning/thinking tokens before answering. Fast disables thinking entirely.</p>
+        </div>
+
         <!-- Test Connection Section -->
         <div class="settings-group">
           <div class="test-connection-row">
