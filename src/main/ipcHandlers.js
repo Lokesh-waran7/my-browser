@@ -40,6 +40,7 @@ function setupIpcHandlers(
     bookmarksManager,
     downloadsManager,
     permissionsManager,
+    updateManager,
   } = additionalManagers;
   // Tab Management
   ipcMain.handle('tab:create', (event, url, activate) => {
@@ -623,6 +624,16 @@ function setupIpcHandlers(
     const next = !mainWindow.isFullScreen();
     mainWindow.setFullScreen(next);
     return next;
+  });
+
+  // Auto-Updater (Step 10 Part D)
+  ipcMain.handle('app:checkForUpdates', async () => {
+    return updateManager ? await updateManager.checkForUpdates(true) : { status: 'disabled' };
+  });
+
+  ipcMain.handle('app:openDownloadPage', (event, url) => {
+    if (updateManager) updateManager.openDownloadPage(url);
+    return true;
   });
 }
 

@@ -64,6 +64,10 @@
       this.customUaInput = document.getElementById('setting-custom-ua');
       this.disableCacheCheckbox = document.getElementById('setting-disable-cache');
 
+      // Update check
+      this.btnCheckUpdates = document.getElementById('btn-check-updates');
+      this.updateStatusLabel = document.getElementById('update-status-label');
+
       // Welcome Modal (First Run)
       this.welcomeModal = document.getElementById('welcome-modal');
       this.welcomeSearchSelect = document.getElementById('welcome-search-engine');
@@ -118,6 +122,32 @@
           if (p && p.trim()) {
             await window.browserAPI.updateSettings({ downloadPath: p.trim() });
             this.downloadPathInput.value = p.trim();
+          }
+        });
+      }
+
+      // Check for updates
+      if (this.btnCheckUpdates) {
+        this.btnCheckUpdates.addEventListener('click', async () => {
+          if (this.updateStatusLabel) this.updateStatusLabel.textContent = 'Checking for updates...';
+          const res = await window.browserAPI.checkForUpdates();
+          if (res && res.hasUpdate) {
+            if (this.updateStatusLabel) this.updateStatusLabel.textContent = `Update available: v${res.latestVersion}`;
+            if (confirm(`An update is available (v${res.latestVersion}). Download now?`)) {
+              window.browserAPI.openDownloadPage(res.downloadUrl);
+            }
+          } else if (res && res.status === 'up-to-date') {
+            if (this.updateStatusLabel) this.updateStatusLabel.textContent = `You're on the latest version (v${res.currentVersion}).`;
+          } else {
+            if (this.updateStatusLabel) this.updateStatusLabel.textContent = (res && res.message) || 'Update check complete.';
+          }
+        });
+      }
+
+      if (window.browserAPI && window.browserAPI.onUpdateAvailable) {
+        window.browserAPI.onUpdateAvailable((info) => {
+          if (confirm(`An update is available (${info.releaseName || 'v' + info.latestVersion}). Download now?`)) {
+            window.browserAPI.openDownloadPage(info.downloadUrl);
           }
         });
       }

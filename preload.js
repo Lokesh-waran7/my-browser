@@ -142,6 +142,10 @@ contextBridge.exposeInMainWorld('browserAPI', {
   printTab: (tabId) => ipcRenderer.invoke('tabs:print', tabId),
   toggleFullScreen: () => ipcRenderer.invoke('window:toggleFullScreen'),
 
+  // Auto-Updater (Step 10 Part D)
+  checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+  openDownloadPage: (url) => ipcRenderer.invoke('app:openDownloadPage', url),
+
   // Event Subscriptions
   onTabCreated: (callback) => {
     ipcRenderer.on('tab:created', (e, data) => callback(data));
@@ -196,6 +200,9 @@ contextBridge.exposeInMainWorld('browserAPI', {
   },
   onFoundInPage: (callback) => {
     ipcRenderer.on('tab:foundInPage', (e, data) => callback(data));
+  },
+  onUpdateAvailable: (callback) => {
+    ipcRenderer.on('app:updateAvailable', (e, data) => callback(data));
   },
 });
 

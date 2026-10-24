@@ -1,25 +1,115 @@
 {
-  "name": "my-browser",
-  "version": "0.1.0",
-  "description": "Minimal coder-focused browser built with Electron",
+  "name": "coder-browser",
+  "productName": "Coder Browser",
+  "version": "1.0.0",
+  "description": "A high-performance, keyboard-first, distraction-free browser designed for developers.",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "test": "node test/test_step10_partA.js && node test/test_step10_partB.js && node test/test_step10_partC.js",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "build:portable": "electron-builder --win portable",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
   },
   "keywords": [
     "browser",
+    "developer-tools",
+    "productivity",
     "electron"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "Coder Browser Contributors",
+  "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
-    "electron": "45.0.0"
+    "electron": "45.0.0",
+    "electron-builder": "^24.13.3"
   },
   "dependencies": {
     "@ghostery/adblocker-electron": "^2.20.1",
     "@google/genai": "^2.31.0",
     "dompurify": "^3.4.17",
     "marked": "^18.1.1"
+  },
+  "build": {
+    "appId": "com.coderbrowser.app",
+    "productName": "Coder Browser",
+    "copyright": "Copyright © 2026 Coder Browser Contributors",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!test/**",
+      "!userData/**",
+      "!logs/**",
+      "!scripts/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Network;WebBrowser",
+      "icon": "assets/icon.png"
+    },
+    "fileAssociations": [
+      {
+        "ext": "html",
+        "name": "HTML Document",
+        "role": "Viewer"
+      },
+      {
+        "ext": "htm",
+        "name": "HTML Document",
+        "role": "Viewer"
+      }
+    ],
+    "protocols": [
+      {
+        "name": "HTTP URL",
+        "schemes": [
+          "http",
+          "https"
+        ]
+      }
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "coderbrowser",
+      "repo": "coder-browser"
+    }
   }
 }

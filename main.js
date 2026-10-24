@@ -22,6 +22,7 @@ const HistoryManager = require('./src/main/historyManager');
 const BookmarksManager = require('./src/main/bookmarksManager');
 const DownloadsManager = require('./src/main/downloadsManager');
 const PermissionsManager = require('./src/main/permissionsManager');
+const UpdateManager = require('./src/main/updateManager');
 const setupIpcHandlers = require('./src/main/ipcHandlers');
 const logger = require('./src/main/logger');
 
@@ -49,6 +50,7 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
+    icon: path.join(__dirname, process.platform === 'win32' ? 'assets/icon.ico' : 'assets/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -98,6 +100,7 @@ function createWindow() {
   downloadsManager.attachToSession(session.defaultSession);
   const permissionsManager = new PermissionsManager(mainWindow, session.defaultSession);
   permissionsManager.attachToSession(session.defaultSession);
+  const updateManager = new UpdateManager(mainWindow);
 
   tabManager.tabSuspender = tabSuspender;
   tabManager.proxyManager = proxyManager;
@@ -213,6 +216,7 @@ function createWindow() {
       bookmarksManager,
       downloadsManager,
       permissionsManager,
+      updateManager,
     }
   );
 
